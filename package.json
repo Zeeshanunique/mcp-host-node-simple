@@ -11,10 +11,11 @@
     "build": "tsc",
     "watch": "tsc -w",
     "start:backend": "node --no-warnings --loader ts-node/esm src/backend/server.ts",
-    "start:frontend": "cd src/frontend && react-scripts start",
-    "build:frontend": "cd src/frontend && react-scripts build",
+    "start:frontend": "cd src/frontend && npm start",
+    "build:frontend": "cd src/frontend && npm run build",
     "build:all": "npm run build && npm run build:frontend",
-    "dev:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+    "dev:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "install:frontend": "cd src/frontend && npm install"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",

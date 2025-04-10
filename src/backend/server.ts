@@ -17,11 +17,18 @@ app.use(express.json());
 
 // Initialize MCP host and tools
 async function initializeHost() {
-  await host.start({
-    mcpServerConfig: "./mcp-servers.json",
-  });
-  tools = await host.tools();
-  console.log("[Server] MCP Host initialized with tools:", await host.toolList());
+  try {
+    await host.start({
+      mcpServerConfig: "./mcp-servers.json",
+    });
+    tools = await host.tools();
+    console.log("[Server] MCP Host initialized with tools:", await host.toolList());
+  } catch (error) {
+    console.error("[Server] Error initializing MCP host:", error);
+    // Continue with whatever tools were loaded successfully
+    tools = await host.tools();
+    console.log("[Server] Continuing with available tools:", await host.toolList());
+  }
 }
 
 // API endpoints - Use proper route method typing
@@ -87,7 +94,9 @@ app.post('/api/chat', (req: Request, res: Response) => {
 app.get('/api/tools', (req: Request, res: Response) => {
   (async () => {
     try {
+      // Force refresh of the tools list from the host
       const toolList = await host.toolList();
+      console.log("[Server] API returning tools:", toolList);
       res.json({ tools: toolList });
     } catch (error) {
       console.error('Error fetching tools:', error);
@@ -103,5 +112,8 @@ initializeHost().then(() => {
   });
 }).catch(err => {
   console.error('[Server] Failed to initialize MCP host:', err);
-  process.exit(1);
+  // Start the server anyway with whatever tools were loaded successfully
+  app.listen(port, () => {
+    console.log(`[Server] API server running on port ${port} with limited functionality`);
+  });
 });
