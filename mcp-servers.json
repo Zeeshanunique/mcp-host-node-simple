@@ -35,6 +35,12 @@
       "args": [
         "./fixtures/servers/travel_guide/index.js"
       ]
+    },
+    "webscrap": {
+      "command": "node",
+      "args": [
+        "./fixtures/servers/webscrap/index.js"
+      ]
     }
   }
 }
