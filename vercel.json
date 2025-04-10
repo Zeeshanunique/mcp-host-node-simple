@@ -16,7 +16,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "dist/backend/server.js"
+      "dest": "/dist/backend/server.js"
     },
     {
       "src": "/static/(.*)",
@@ -31,6 +31,7 @@
     }
   ],
   "env": {
-    "PORT": "3000"
+    "PORT": "3000",
+    "NODE_ENV": "production"
   }
 } 
