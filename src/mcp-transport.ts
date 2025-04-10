@@ -46,10 +46,20 @@ export async function readMCPTransport(
             });
             
             console.log(`[Transport] Resolved args for ${name}:`, args);
-            
+
+            let transportCommand = option.command;
+            let transportArgs = args;
+
+            // Windows-specific fix for ENOENT: Use cmd /c
+            if (process.platform === 'win32') {
+              transportArgs = ['/c', transportCommand, ...args];
+              transportCommand = 'cmd';
+              console.log(`[Transport] Adjusting command for Windows: ${transportCommand}`, transportArgs);
+            }
+
             acc[name] = new Experimental_StdioMCPTransport({
-              command: option.command,
-              args: args,
+              command: transportCommand,
+              args: transportArgs,
               env: option.env,
               stderr: process.stderr, // Redirect stderr to main process for debugging
               cwd: option.cwd || process.cwd(),
