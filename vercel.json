@@ -9,7 +9,7 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "."
+        "distDir": "src/frontend/build"
       }
     }
   ],
@@ -17,6 +17,10 @@
     {
       "src": "/api/(.*)",
       "dest": "dist/backend/server.js"
+    },
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
     },
     {
       "handle": "filesystem"
