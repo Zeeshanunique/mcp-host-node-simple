@@ -5,7 +5,14 @@ import { MCPHost } from '../mcp-host.js';
 import { LLMClient } from '../llm-client.js';
 import { AnthropicProvider } from '../llm-provider.js';
 import { CoreMessage } from 'ai'; // Restore import
+import path from 'path';
+import { fileURLToPath } from 'url';
 console.log('[Server Start] Modules loaded.');
+
+// Get directory paths for proper file resolution
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '../..');
 
 console.log('[Server Start] Initializing Express...');
 const app = express();
@@ -27,8 +34,12 @@ console.log('[Server Start] Middleware applied.');
 // Initialize MCP host and tools
 async function initializeHost() {
   try {
+    // Use appropriate path resolution for both dev and production
+    const mcpConfigPath = path.resolve(rootDir, "mcp-servers.json");
+    console.log("[Server] Looking for MCP config at:", mcpConfigPath);
+
     await host.start({
-      mcpServerConfig: "./mcp-servers.json",
+      mcpServerConfig: mcpConfigPath,
     });
     tools = await host.tools();
     console.log("[Server] MCP Host initialized with tools:", await host.toolList());
