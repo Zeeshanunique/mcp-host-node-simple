@@ -16,7 +16,7 @@
     "build:all": "npm run build && npm run build:frontend",
     "dev:all": "npm run build && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "install:frontend": "cd src/frontend && npm install",
-    "vercel-build": "npm run build && npm run install:frontend && npm run build:frontend && cp -r src/frontend/build . && cp mcp-servers.json dist/"
+    "vercel-build": "npm run build && npm run install:frontend && npm run build:frontend && cp -r src/frontend/build . && cp mcp-servers.json dist/ && cp -r fixtures dist/"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
