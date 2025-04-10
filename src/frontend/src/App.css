@@ -1,0 +1,136 @@
+.app-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.app-header {
+  background-color: #2c3e50;
+  color: white;
+  border-radius: 10px 10px 0 0;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.app-header h1 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.tools-container {
+  background-color: #34495e;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.tools-container h3 {
+  margin-top: 0;
+  color: #ecf0f1;
+}
+
+.tools-container ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0;
+  list-style-type: none;
+  margin: 0;
+}
+
+.tools-container li {
+  background-color: #3498db;
+  color: white;
+  padding: 5px 12px;
+  border-radius: 15px;
+  font-size: 14px;
+}
+
+.chat-container {
+  background-color: white;
+  border-radius: 0 0 10px 10px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.response-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+}
+
+.assistant-response, .tool-results, .final-response {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.assistant-response:last-child, .tool-results:last-child, .final-response:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.assistant-response h3, .tool-results h3, .final-response h3 {
+  color: #2c3e50;
+  margin-top: 0;
+}
+
+.tool-result {
+  background-color: #eaf2f8;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.tool-result h4 {
+  margin-top: 0;
+  color: #3498db;
+}
+
+.error-message {
+  color: #e74c3c;
+  background-color: #fadbd8;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.message-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  resize: vertical;
+}
+
+.message-form button {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 20px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.message-form button:hover {
+  background-color: #2980b9;
+}
+
+.message-form button:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
+}
