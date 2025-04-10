@@ -1,7 +1,7 @@
 {
   "name": "mcp-host",
   "version": "1.0.0",
-  "description": "Node.js TypeScript Application",
+  "description": "Node.js TypeScript Application with React Frontend",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -9,19 +9,46 @@
     "dev": "node --no-warnings --loader ts-node/esm src/index.ts",
     "debug": "node --no-warnings --inspect-brk --loader ts-node/esm src/index.ts",
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "start:backend": "node --no-warnings --loader ts-node/esm src/backend/server.ts",
+    "start:frontend": "cd src/frontend && react-scripts start",
+    "build:frontend": "cd src/frontend && react-scripts build",
+    "build:all": "npm run build && npm run build:frontend",
+    "dev:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
-    "ai": "^4.2.10"
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.2",
+    "ai": "^4.2.10",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-scripts": "^5.0.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.8.0",
     "@types/node": "^18.15.11",
+    "concurrently": "^8.2.2",
     "dotenv": "^16.4.7",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.4",
     "zod": "^3.24.2"
   },
-  "packageManager": "pnpm@10.6.5"
+  "packageManager": "pnpm@10.6.5",
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
 }
