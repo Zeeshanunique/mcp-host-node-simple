@@ -11,8 +11,8 @@ console.log('[Server Start] Modules loaded.');
 
 // Get directory paths for proper file resolution
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '../..');
+const __dirname = path.dirname(__filename); // This will be /var/task/dist/backend in Vercel
+// const rootDir = path.resolve(__dirname, '../..'); // No longer needed for this path
 
 console.log('[Server Start] Initializing Express...');
 const app = express();
@@ -34,8 +34,8 @@ console.log('[Server Start] Middleware applied.');
 // Initialize MCP host and tools
 async function initializeHost() {
   try {
-    // Use appropriate path resolution for both dev and production
-    const mcpConfigPath = path.resolve(rootDir, "mcp-servers.json");
+    // Path should resolve relative to the dist/backend directory
+    const mcpConfigPath = path.resolve(__dirname, '..', "mcp-servers.json"); // Look in dist/ directory
     console.log("[Server] Looking for MCP config at:", mcpConfigPath);
 
     await host.start({
