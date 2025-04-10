@@ -31,7 +31,7 @@ interface ChatMessage {
 
 function App() {
   const [message, setMessage] = useState('');
-  const [response, setResponse] = useState<ChatResponse | null>(null);
+  const [chatResponse, setResponse] = useState<ChatResponse | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [tools, setTools] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
