@@ -9,10 +9,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 console.log('[Server Start] Modules loaded.');
 
-// Get directory paths for proper file resolution
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename); // This will be /var/task/dist/backend in Vercel
-// const rootDir = path.resolve(__dirname, '../..'); // No longer needed for this path
+// // Get directory paths for proper file resolution
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename); // This will be /var/task/dist/backend in Vercel
+// // const rootDir = path.resolve(__dirname, '../..'); // No longer needed for this path
 
 console.log('[Server Start] Initializing Express...');
 const app = express();
@@ -34,12 +34,12 @@ console.log('[Server Start] Middleware applied.');
 // Initialize MCP host and tools
 async function initializeHost() {
   try {
-    // Path should resolve relative to the dist/backend directory
-    const mcpConfigPath = path.resolve(__dirname, '..', "mcp-servers.json"); // Look in dist/ directory
-    console.log("[Server] Looking for MCP config at:", mcpConfigPath);
+    // // Path should resolve relative to the dist/backend directory
+    // const mcpConfigPath = path.resolve(__dirname, '..', "mcp-servers.json"); // Look in dist/ directory
+    // console.log("[Server] Looking for MCP config at:", mcpConfigPath);
 
     await host.start({
-      mcpServerConfig: mcpConfigPath,
+      mcpServerConfig: "./mcp-servers.json", // Restore original relative path for local dev
     });
     tools = await host.tools();
     console.log("[Server] MCP Host initialized with tools:", await host.toolList());
