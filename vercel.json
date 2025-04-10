@@ -20,7 +20,14 @@
     },
     {
       "src": "/(.*)",
-      "dest": "src/frontend/build/$1"
+      "dest": "/src/frontend/build/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/src/frontend/build/index.html"
     }
   ],
   "env": {
