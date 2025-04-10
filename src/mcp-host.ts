@@ -21,22 +21,44 @@ export class MCPHost {
     console.log('[MCPHost] Host get started');
 
     const configPath = path.resolve(process.cwd(), options.mcpServerConfig);
+    console.log('[MCPHost] Reading config from:', configPath);
+    
     const transports = await readMCPTransport(configPath);
+    console.log('[MCPHost] Configured servers:', Object.keys(transports));
 
-    const clients = await Promise.all(
-      Object.keys(transports).map((name) =>
-        experimental_createMCPClient({ transport: transports[name] })
-      )
-    );
+    // Create clients for each server, handling errors individually
+    const clients: MCPClient[] = [];
+    for (const [name, transport] of Object.entries(transports)) {
+      try {
+        console.log(`[MCPHost] Creating client for server: ${name}`);
+        const client = await experimental_createMCPClient({ transport });
+        clients.push(client);
+        console.log(`[MCPHost] Successfully created client for server: ${name}`);
+      } catch (err) {
+        console.error(`[MCPHost] Error creating client for ${name}:`, err);
+        // Continue with other servers
+      }
+    }
 
+    console.log(`[MCPHost] Created ${clients.length} clients successfully`);
+
+    // Load tools from each client, handling errors individually
     for (const client of clients) {
-      const tools = await client.tools();
+      try {
+        console.log('[MCPHost] Getting tools from client...');
+        const tools = await client.tools();
+        console.log('[MCPHost] Got tools:', Object.keys(tools));
 
-      for (const [name, tool] of Object.entries(tools)) {
-        this.#tools = {
-          ...this.#tools,
-          [name]: tool,
-        };
+        for (const [name, tool] of Object.entries(tools)) {
+          console.log(`[MCPHost] Adding tool: ${name}`);
+          this.#tools = {
+            ...this.#tools,
+            [name]: tool,
+          };
+        }
+      } catch (err) {
+        console.error('[MCPHost] Error getting tools from client:', err);
+        // Continue with other clients
       }
     }
 
