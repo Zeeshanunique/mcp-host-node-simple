@@ -3,37 +3,37 @@
     "calc": {
       "command": "node",
       "args": [
-        "fixtures/servers/add/index.js"
+        "dist/fixtures/servers/add/index.js"
       ]
     },
     "websearch": {
       "command": "node",
       "args": [
-        "fixtures/servers/websearch/index.js"
+        "dist/fixtures/servers/websearch/index.js"
       ]
     },
     "research": {
       "command": "node",
       "args": [
-        "fixtures/servers/research/index.js"
+        "dist/fixtures/servers/research/index.js"
       ]
     },
     "weather": {
       "command": "node",
       "args": [
-        "fixtures/servers/weather/index.js"
+        "dist/fixtures/servers/weather/index.js"
       ]
     },
     "summarize": {
       "command": "node",
       "args": [
-        "fixtures/servers/summarize/index.js"
+        "dist/fixtures/servers/summarize/index.js"
       ]
     },
     "travel_guide": {
       "command": "node",
       "args": [
-        "fixtures/servers/travel_guide/index.js"
+        "dist/fixtures/servers/travel_guide/index.js"
       ]
     }
   }
