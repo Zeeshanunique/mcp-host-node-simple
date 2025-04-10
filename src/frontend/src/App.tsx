@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 interface ToolResult {
@@ -24,14 +24,25 @@ interface ToolInfo {
   example: string;
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 function App() {
   const [message, setMessage] = useState('');
   const [response, setResponse] = useState<ChatResponse | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [tools, setTools] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('chat');
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const chatEndRef = useRef<null | HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
   // Generate tool info dynamically based on tool name
   const getToolInfo = (toolName: string): ToolInfo => {
@@ -111,30 +122,48 @@ function App() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || isLoading) return;
 
+    const newUserMessage: ChatMessage = { role: 'user', content: message };
+    const updatedHistory = [...chatHistory, newUserMessage];
+
+    setChatHistory(updatedHistory);
+    setMessage('');
     setIsLoading(true);
     setError(null);
-    
+    setResponse(null);
+
     try {
-      // Using relative URL instead of hardcoded localhost
-      const response = await fetch('/api/chat', {
+      const apiResponse = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ history: updatedHistory }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response');
+      if (!apiResponse.ok) {
+        throw new Error('Failed to get response from server');
       }
 
-      const data = await response.json() as ChatResponse;
+      const data = await apiResponse.json() as ChatResponse;
       setResponse(data);
-    } catch (err) {
+
+      let assistantMessages: ChatMessage[] = [];
+      if (data.initialResponse) {
+        assistantMessages.push({ role: 'assistant', content: data.initialResponse });
+      }
+      if (data.finalResponse && (data.toolResults.length > 0 || !data.initialResponse)) {
+        if (data.finalResponse !== data.initialResponse) {
+          assistantMessages.push({ role: 'assistant', content: data.finalResponse });
+        }
+      }
+
+      setChatHistory(prevHistory => [...prevHistory, ...assistantMessages]);
+
+    } catch (err: any) {
       console.error('Error sending message:', err);
-      setError('Failed to get response. Please try again.');
+      setError(err.message || 'Failed to get response. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -181,48 +210,20 @@ function App() {
 
   const renderChatTab = () => (
     <div className="chat-tab">
-      {response && (
-        <div className="response-container">
-          <div className="assistant-response">
-            <h3>Assistant:</h3>
-            <p>{response.initialResponse}</p>
+      <div className="chat-history">
+        {chatHistory.map((msg, index) => (
+          <div key={index} className={`message ${msg.role}-message`}>
+            <span className="message-role">{msg.role === 'user' ? 'You' : 'Assistant'}:</span>
+            <p className="message-content">{msg.content}</p>
           </div>
-          
-          {response.toolResults.length > 0 && (
-            <div className="tool-results">
-              <h3>Tool Results:</h3>
-              {response.toolResults.map((tool, index) => (
-                <div key={index} className="tool-result">
-                  <h4>{tool.name}</h4>
-                  <p>{tool.result}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          {response.finalResponse && (
-            <div className="final-response">
-              <h3>Assistant's Final Answer:</h3>
-              <p>{response.finalResponse}</p>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {error && <div className="error-message">{error}</div>}
-      
-      <form onSubmit={handleSubmit} className="message-form">
-        <textarea
-          value={message}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
-          placeholder="Enter your message here (e.g., 'Use add tool to calculate 100 + 200')"
-          rows={4}
-          disabled={isLoading}
-        />
-        <button type="submit" disabled={isLoading || !message.trim()}>
-          {isLoading ? 'Sending...' : 'Send Message'}
-        </button>
-      </form>
+        ))}
+        {isLoading && (
+          <div className="message assistant-message loading-indicator">
+            <span>Thinking...</span>
+          </div>
+        )}
+        <div ref={chatEndRef} />
+      </div>
     </div>
   );
 
@@ -249,6 +250,27 @@ function App() {
       <div className="tab-content">
         {activeTab === 'chat' ? renderChatTab() : renderToolsTab()}
       </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      <form onSubmit={handleSubmit} className="message-form">
+        <textarea
+          value={message}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
+          placeholder="Enter your message here (e.g., 'Use add tool to calculate 100 + 200')"
+          rows={4}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit(e as any);
+            }
+          }}
+          disabled={isLoading}
+        />
+        <button type="submit" disabled={isLoading || !message.trim()}>
+          {isLoading ? 'Sending...' : 'Send Message'}
+        </button>
+      </form>
     </div>
   );
 }

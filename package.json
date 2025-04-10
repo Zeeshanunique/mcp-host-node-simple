@@ -10,12 +10,13 @@
     "debug": "node --no-warnings --inspect-brk --loader ts-node/esm src/index.ts",
     "build": "tsc",
     "watch": "tsc -w",
-    "start:backend": "node --no-warnings --loader ts-node/esm src/backend/server.ts",
+    "start:backend": "node dist/backend/server.js",
     "start:frontend": "cd src/frontend && npm start",
     "build:frontend": "cd src/frontend && npm run build",
     "build:all": "npm run build && npm run build:frontend",
-    "dev:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
-    "install:frontend": "cd src/frontend && npm install"
+    "dev:all": "npm run build && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "install:frontend": "cd src/frontend && npm install",
+    "vercel-build": "npm run build && npm run install:frontend && npm run build:frontend"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
