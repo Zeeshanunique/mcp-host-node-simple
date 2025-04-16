@@ -4,15 +4,17 @@ import { ScrollArea } from './components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card';
 import { Textarea } from './components/ui/textarea';
 import { Button } from './components/ui/button';
+import { Separator } from './components/ui/separator';
 import { Badge } from './components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/ui/collapsible';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from './components/ui/dialog';
 import { KeyboardShortcuts } from './components/keyboard-shortcuts';
 import { ShortcutsHelpDialog } from './components/shortcuts-help-dialog';
 import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2 } from 'lucide-react';
+import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsUp, ChevronsDown, Info, Cpu, AlertTriangle, CheckCircle, Trash2, Keyboard } from 'lucide-react';
 
 interface ToolResult {
   name: string;
@@ -95,89 +97,112 @@ function App() {
       description = "Conducts in-depth research on a topic";
       parameters = "topic: string";
       example = "Research the history of quantum computing";
+    } else if (toolName === 'get_weather') {
+      description = "Gets weather information for a location";
+      parameters = "location: string, units: 'metric'|'imperial' (optional)";
+      example = "What's the weather like in Tokyo?";
+    } else if (toolName === 'summarize_text') {
+      description = "Creates a summary of provided text";
+      parameters = "text: string";
+      example = "Summarize this article about renewable energy...";
+    } else if (toolName === 'get_destination_info') {
+      description = "Gets travel information about destinations";
+      parameters = "destination: string, interests: string[] (optional)";
+      example = "Tell me about visiting Paris with interests in art and food";
     }
 
     return {
       name: displayName,
       description,
       parameters,
-      example,
+      example
     };
   };
 
-  // Fetch available tools
-  const fetchTools = async () => {
-    try {
-      const response = await fetch('/api/tools');
-      if (!response.ok) {
-        throw new Error('Failed to fetch tools');
-      }
-      const data: ToolsResponse = await response.json();
-      setTools(data.tools);
-    } catch (error) {
-      console.error('Error fetching tools:', error);
-      setError('Failed to fetch available tools. Please try again later.');
-    }
-  };
-
+  // Fetch available tools when component mounts
   useEffect(() => {
-    fetchTools();
-  }, []);
+    const fetchTools = async () => {
+      try {
+        // Using relative URL instead of hardcoded localhost
+        const res = await fetch('/api/tools');
+        const data = await res.json() as ToolsResponse;
+        setTools(data.tools || []);
+      } catch (err) {
+        console.error('Failed to fetch tools:', err);
+        setError('Failed to connect to the server. Please try again later.');
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Failed to connect to the server. Please try again later."
+        });
+      }
+    };
 
-  // Handle form submission
+    fetchTools();
+  }, [toast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isLoading) return;
 
-    // Create updated chat history with the new user message
     const newUserMessage: ChatMessage = { role: 'user', content: message };
-    const updatedChatHistory: ChatMessage[] = [...chatHistory, newUserMessage];
-    
-    // Update state with new chat history
-    setChatHistory(updatedChatHistory);
-    
-    // Clear previous response and error
-    setResponse(null);
-    setError(null);
+    const updatedHistory = [...chatHistory, newUserMessage];
+
+    setChatHistory(updatedHistory);
+    setMessage('');
     setIsLoading(true);
+    setError(null);
+    setResponse(null);
 
     try {
-      // Convert our ChatMessage[] to the format expected by the backend (CoreMessage[])
-      // Because our ChatMessage interface matches what the backend expects, this is safe
-      const response = await fetch('/api/chat', {
+      const apiResponse = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ history: updatedChatHistory }),
+        body: JSON.stringify({ history: updatedHistory }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to send message');
+      if (!apiResponse.ok) {
+        throw new Error('Failed to get response from server');
       }
 
-      const data: ChatResponse = await response.json();
+      const data = await apiResponse.json() as ChatResponse;
       setResponse(data);
 
-      // Add assistant's response to chat history
+      let assistantMessages: ChatMessage[] = [];
       if (data.initialResponse) {
-        // Type assertion to ensure initialResponse is treated as string
-        const safeInitialResponse: string = data.initialResponse;
-        setChatHistory(prev => [...prev, { role: 'assistant', content: safeInitialResponse }]);
+        assistantMessages.push({ role: 'assistant', content: data.initialResponse });
       }
-      
-      // Only add the final response to chat history if it exists and is not null
-      if (data.finalResponse) {
-        // Type assertion to ensure finalResponse is treated as string and not null
-        const safeResponse: string = data.finalResponse;
-        setChatHistory(prev => [...prev, { role: 'assistant', content: safeResponse }]);
+      if (data.finalResponse && (data.toolResults.length > 0 || !data.initialResponse)) {
+        if (data.finalResponse !== data.initialResponse) {
+          assistantMessages.push({ role: 'assistant', content: data.finalResponse });
+        }
       }
 
-      // Clear the message input
-      setMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Failed to send message. Please try again later.');
+      setChatHistory(prevHistory => [...prevHistory, ...assistantMessages]);
+
+      // If tools were used, notify the user
+      if (data.toolResults && data.toolResults.length > 0) {
+        toast({
+          title: "Tools Used",
+          description: `${data.toolResults.length} tool${data.toolResults.length > 1 ? 's' : ''} were used to generate the response.`
+        });
+        
+        // Add a small delay before scrolling to the most recent message
+        setTimeout(() => {
+          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 300);
+      }
+
+    } catch (err: any) {
+      console.error('Error sending message:', err);
+      setError(err.message || 'Failed to get response. Please try again.');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || 'Failed to get response. Please try again.'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -200,8 +225,8 @@ function App() {
   const handleClearChat = () => {
     if (chatHistory.length === 0) return;
 
-    // Show confirmation dialog using window.confirm to avoid ESLint warning
-    if (window.confirm('Are you sure you want to clear the chat history?')) {
+    // Show confirmation dialog
+    if (confirm('Are you sure you want to clear the chat history?')) {
       setChatHistory([]);
       setResponse(null);
       toast({
@@ -321,7 +346,7 @@ function App() {
                         </div>
                       ))
                     )}
-                    
+
                     {chatResponse && chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
                       <div className="flex justify-start my-2">
                         <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border">
@@ -370,55 +395,55 @@ function App() {
                         </div>
                       </div>
                     )}
-                    <div ref={chatEndRef} />
-                  </div>
-                </ScrollArea>
-              </CardContent>
-              <CardFooter className="border-t pt-4">
-                <form className="w-full space-y-2" onSubmit={handleSubmit}>
-                  {error && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Error</AlertTitle>
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <Textarea
-                      placeholder="Type your message here...  (Ctrl+Enter to send)"
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      className="min-h-[80px] resize-none"
-                      disabled={isLoading}
-                    />
-                    <div className="flex justify-between items-center">
-                      <div className="text-xs text-muted-foreground">
-                        {selectedTool && (
-                          <Badge variant="outline" className="mr-2">
-                            <Code className="h-3 w-3 mr-1" />
-                            Using: {selectedTool}
-                          </Badge>
-                        )}
-                      </div>
-                      <Button 
-                        type="submit" 
-                        className="gap-1 min-w-[100px]" 
-                        disabled={!message.trim() || isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4" />
-                            Send
-                          </>
-                        )}
-                      </Button>
+                  <div ref={chatEndRef} />
+                </div>
+              </ScrollArea>
+            </CardContent>
+            <CardFooter className="border-t pt-4">
+              <form className="w-full space-y-2" onSubmit={handleSubmit}>
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex flex-col gap-2">
+                  <Textarea
+                    placeholder="Type your message here...  (Ctrl+Enter to send)"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="min-h-[80px] resize-none"
+                    disabled={isLoading}
+                  />
+                  <div className="flex justify-between items-center">
+                    <div className="text-xs text-muted-foreground">
+                      {selectedTool && (
+                        <Badge variant="outline" className="mr-2">
+                          <Code className="h-3 w-3 mr-1" />
+                          Using: {selectedTool}
+                        </Badge>
+                      )}
                     </div>
+                    <Button 
+                      type="submit" 
+                      className="gap-1 min-w-[100px]" 
+                      disabled={!message.trim() || isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" />
+                          Send
+                        </>
+                      )}
+                    </Button>
                   </div>
+                </div>
                 </form>
               </CardFooter>
             </Card>
