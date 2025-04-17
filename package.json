@@ -11,17 +11,17 @@
     "build": "rimraf dist && tsc",
     "watch": "tsc -w",
     "start:backend": "node dist/backend/server.js",
-    "start:backend:dev": "set NODE_ENV=development&& node dist/backend/server.js",
+    "start:backend:dev": "node -r dotenv/config dist/backend/server.js dotenv_config_path=.env",
     "start:frontend": "cd src/frontend && npm start",
     "build:frontend": "cd src/frontend && npm run build",
     "build:all": "npm run build && npm run build:frontend",
     "dev:all": "npm run build && concurrently \"npm run start:backend:dev\" \"npm run start:frontend\"",
-    "prod:all": "set NODE_ENV=production && npm run build:all && npm run start:backend",
+    "prod:all": "node -r dotenv/config -e \"process.env.NODE_ENV='production'\" && npm run build:all && node -r dotenv/config dist/backend/server.js dotenv_config_path=.env",
     "install:all": "npm install && npm run install:frontend",
     "install:frontend": "cd src/frontend && npm install",
     "lint": "eslint --ext .ts,.tsx src/",
     "lint:fix": "eslint --ext .ts,.tsx src/ --fix",
-    "test": "set NODE_ENV=test&& jest"
+    "test": "node -r dotenv/config -e \"process.env.NODE_ENV='test'\" && jest"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
