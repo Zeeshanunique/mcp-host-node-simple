@@ -41,6 +41,28 @@
       "args": [
         "./fixtures/servers/webscrap/index.js"
       ]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@smithery-ai/brave-search",
+        "--config",
+        "{\"braveApiKey\":\"BSAhMsNRG-oPscFO-yb8vbGE1hZJWaf\"}"
+      ]
+    },
+    "playwright-mcp-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@showfive/playwright-mcp-server",
+        "--key",
+        "bcc0907e-f08e-410d-8a3e-ae6faecacdd3"
+      ]
     }
   }
 }
