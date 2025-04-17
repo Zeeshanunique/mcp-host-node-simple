@@ -212,10 +212,11 @@ if (config.NODE_ENV === 'production') {
   
   if (fs.existsSync(frontendBuildPath)) {
     logger.info({ path: frontendBuildPath }, 'Serving frontend static files');
+    // Serve static files from the React build
     app.use(express.static(frontendBuildPath));
     
-    // For any other routes, serve the index.html file
-    app.get('*', (_req: Request, res: Response) => {
+    // Simple route for serving index.html, instead of complex wildcard route
+    app.use((req: Request, res: Response) => {
       res.sendFile(path.resolve(frontendBuildPath, 'index.html'));
     });
   } else {
