@@ -108,7 +108,9 @@ function App() {
   // Fetch available tools
   const fetchTools = async () => {
     try {
-      const response = await fetch('/api/tools');
+      // Get the API URL from environment variables
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      const response = await fetch(`${apiUrl}/api/tools`);
       if (!response.ok) {
         throw new Error('Failed to fetch tools');
       }
@@ -142,9 +144,11 @@ function App() {
     setIsLoading(true);
 
     try {
-      // Convert our ChatMessage[] to the format expected by the backend (CoreMessage[])
-      // Because our ChatMessage interface matches what the backend expects, this is safe
-      const response = await fetch('/api/chat', {
+      // Get the API URL from environment variables
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      
+      // Send the request to the backend with the full API URL
+      const response = await fetch(`${apiUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -344,7 +348,7 @@ function App() {
                                     <Code className="h-4 w-4" />
                                     {tool.name}
                                   </div>
-                                  <div className="text-sm whitespace-pre-wrap font-mono text-xs bg-background/50 p-2 rounded-sm overflow-x-auto">
+                                  <div className="whitespace-pre-wrap font-mono text-xs bg-background/50 p-2 rounded-sm overflow-x-auto">
                                     {tool.result}
                                   </div>
                                 </div>
@@ -475,7 +479,7 @@ function App() {
                           </CardContent>
                           <CardFooter>
                             <div className="text-sm w-full">
-                              <span className="text-muted-foreground block mb-1 flex items-center gap-1">
+                              <span className="text-muted-foreground inline-flex items-center gap-1 mb-1">
                                 <MessageSquare className="h-3 w-3" />
                                 Example:
                               </span>
