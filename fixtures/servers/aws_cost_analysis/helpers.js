@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { marked } from 'marked';
 
 // Get the directory name of the current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -180,4 +181,206 @@ export function calculateGrowthProjection(baseCost, growthRate, years = 3) {
   }
   
   return projections;
-} 
+}
+
+/**
+ * Helper utilities for AWS Cost Analysis
+ */
+
+/**
+ * Format a number with commas for thousands
+ * @param {number} num Number to format
+ * @returns {string} Formatted number
+ */
+function formatNumber(num) {
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * Calculate percentage change between two values
+ * @param {number} current Current value
+ * @param {number} previous Previous value
+ * @returns {number} Percentage change
+ */
+function calculatePercentageChange(current, previous) {
+  if (previous === 0) return current > 0 ? 1 : 0;
+  return (current - previous) / previous;
+}
+
+/**
+ * Generate a report from a template and data
+ * @param {string} templatePath Path to the report template
+ * @param {Object} data Data to populate the template with
+ * @returns {string} Generated report
+ */
+function generateReport(templatePath, data) {
+  try {
+    const template = fs.readFileSync(templatePath, 'utf8');
+    let report = template;
+    
+    // Replace placeholders with actual data
+    Object.entries(data).forEach(([key, value]) => {
+      const placeholder = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+      report = report.replace(placeholder, value);
+    });
+    
+    return report;
+  } catch (error) {
+    console.error(`Error generating report: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Generate a markdown report from cost comparison results
+ * @param {Object} comparisonResults Results from architecture comparison
+ * @returns {string} Markdown report
+ */
+function generateComparisonReport(comparisonResults) {
+  const { stacks, comparisonMetrics, conclusion } = comparisonResults;
+  
+  if (!stacks || stacks.length === 0) {
+    return "No comparison data available.";
+  }
+
+  // Get the template
+  const templatePath = path.join(__dirname, 'templates', 'report-template.markdown');
+  
+  // Prepare data for the template
+  const reportData = {
+    title: `Cost Comparison Report: ${stacks.map(s => s.name).join(' vs ')}`,
+    date: new Date().toLocaleDateString(),
+    architectureNames: stacks.map(s => s.name).join(', '),
+    
+    // Cost summary
+    totalCostComparison: stacks.map(s => 
+      `${s.name}: $${formatCurrency(s.analysis.estimatedCost.monthlyCost)} per month`
+    ).join('\n'),
+    
+    // Metrics comparison
+    metricsComparison: comparisonMetrics.map(metric => {
+      const metricRows = stacks.map(stack => 
+        `| ${stack.name} | ${typeof metric[stack.name] === 'number' ? 
+          (metric.name.toLowerCase().includes('cost') ? 
+            '$' + formatCurrency(metric[stack.name]) : 
+            formatNumber(metric[stack.name])
+          ) : 
+          metric[stack.name] || 'N/A'} |`
+      ).join('\n');
+      
+      return `### ${metric.name}\n${metric.description}\n\n| Architecture | ${metric.name} |\n|-------------|-------------:|\n${metricRows}`;
+    }).join('\n\n'),
+    
+    // Service breakdown
+    serviceBreakdown: stacks.map(stack => {
+      const services = stack.analysis.serviceCosts
+        .sort((a, b) => b.monthlyCost - a.monthlyCost)
+        .map(service => 
+          `| ${service.service} | $${formatCurrency(service.monthlyCost)} | ${formatPercentage(service.monthlyCost / stack.analysis.estimatedCost.monthlyCost)} |`
+        ).join('\n');
+        
+      return `### ${stack.name} Services\n\n| Service | Monthly Cost | % of Total |\n|---------|------------:|----------:|\n${services}`;
+    }).join('\n\n'),
+    
+    // Resource details
+    resourceDetails: stacks.map(stack => {
+      const resources = Object.entries(stack.analysis.resourceCounts || {})
+        .sort(([, a], [, b]) => b - a)
+        .map(([type, count]) => `| ${type} | ${count} |`)
+        .join('\n');
+        
+      return `### ${stack.name} Resources\n\n| Resource Type | Count |\n|--------------|------:|\n${resources}`;
+    }).join('\n\n'),
+    
+    // Cost optimization recommendations
+    optimizationRecommendations: stacks.map(stack => {
+      const recommendations = stack.analysis.recommendations || [];
+      
+      if (recommendations.length === 0) {
+        return `### ${stack.name}\nNo specific optimization recommendations identified.`;
+      }
+      
+      const recList = recommendations
+        .map(rec => `- **${rec.title}**: ${rec.description}`)
+        .join('\n');
+        
+      return `### ${stack.name}\n${recList}`;
+    }).join('\n\n'),
+    
+    // Conclusion
+    conclusion
+  };
+  
+  return generateReport(templatePath, reportData);
+}
+
+/**
+ * Convert a markdown report to HTML
+ * @param {string} markdown Markdown content
+ * @returns {string} HTML content
+ */
+function markdownToHtml(markdown) {
+  return marked(markdown);
+}
+
+/**
+ * Parse a template file (JSON or YAML)
+ * @param {string} templatePath Path to template file
+ * @returns {Object} Parsed template
+ */
+function parseTemplateFile(templatePath) {
+  try {
+    const content = fs.readFileSync(templatePath, 'utf8');
+    
+    // Determine file type from extension
+    const ext = path.extname(templatePath).toLowerCase();
+    
+    if (ext === '.json') {
+      return JSON.parse(content);
+    } else if (ext === '.yaml' || ext === '.yml') {
+      // Assume yaml module is available
+      // If not, you'll need to add it as a dependency
+      const yaml = require('js-yaml');
+      return yaml.load(content);
+    } else {
+      throw new Error(`Unsupported template format: ${ext}`);
+    }
+  } catch (error) {
+    console.error(`Error parsing template file: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get list of available template files
+ * @param {string} templatesDir Directory containing templates
+ * @returns {Array} List of template files
+ */
+function getAvailableTemplates(templatesDir = path.join(__dirname, 'templates')) {
+  try {
+    const files = fs.readdirSync(templatesDir);
+    
+    return files
+      .filter(file => file.endsWith('.json') || file.endsWith('.yaml') || file.endsWith('.yml'))
+      .map(file => ({
+        name: file.replace(/\.(json|yaml|yml)$/, ''),
+        path: path.join(templatesDir, file),
+        type: path.extname(file).substring(1)
+      }));
+  } catch (error) {
+    console.error(`Error reading templates directory: ${error.message}`);
+    return [];
+  }
+}
+
+module.exports = {
+  formatCurrency,
+  formatNumber,
+  formatPercentage,
+  calculatePercentageChange,
+  generateReport,
+  generateComparisonReport,
+  markdownToHtml,
+  parseTemplateFile,
+  getAvailableTemplates
+}; 
