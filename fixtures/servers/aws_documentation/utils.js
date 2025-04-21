@@ -2,7 +2,7 @@
  * Utility functions for AWS Documentation MCP Server.
  */
 
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import { convert } from 'html-to-markdown';
 import { RecommendationResult } from './models.js';
 
