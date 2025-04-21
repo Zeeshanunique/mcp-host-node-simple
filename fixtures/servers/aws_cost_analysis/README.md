@@ -1,138 +1,143 @@
-# AWS Architecture Cost Analysis
+# AWS Cost Analysis MCP Server
 
-This tool analyzes and compares the costs between different AWS architecture approaches, specifically:
-- EC2-based architectures
-- Container-based architectures
-- Serverless architectures
+The AWS Cost Analysis MCP Server provides functionality for analyzing AWS CloudFormation and CDK stack templates to estimate costs and compare different architecture options.
 
-## Files
+## Features
 
-- `cdk_analyzer.js` - Core analyzer that processes CloudFormation/CDK templates and estimates costs
-- `compare_architectures.js` - Script that compares EC2-based and container-based architectures
-- `index.js` - MCP server entry point for integration with Model Context Protocol
-- `templates/` - Directory containing sample CloudFormation templates
-  - `ec2_template.json` - Template for EC2-based microservice architecture
-  - `container_template.json` - Template for container-based microservice architecture
-  - `serverless_template.json` - Template for serverless architecture
+- **Single Template Analysis**: Analyze a CloudFormation/CDK template to estimate monthly costs
+- **Architecture Comparison**: Compare costs between different architecture options
+- **Cost Optimization Recommendations**: Get recommendations for reducing costs
+- **HTML Report Generation**: Generate detailed HTML reports with cost breakdowns
+- **Resource Utilization Analysis**: Understand resource usage and potential savings
 
-## How to Run
+## Usage
 
-### Prerequisites
+### Analyzing a Template
 
-- Node.js (version 14 or higher)
-- npm or yarn
-
-### Installation
-
-```bash
-# Install dependencies
-npm install
-```
-
-### Running the Comparison Analysis (CLI)
-
-On Windows:
-```
-node fixtures/servers/aws_cost_analysis/compare_architectures.js
-```
-
-On Linux/MacOS:
-```
-node fixtures/servers/aws_cost_analysis/compare_architectures.js
-# Or using the executable directly
-./fixtures/servers/aws_cost_analysis/compare_architectures.js
-```
-
-### Using as an MCP Server
-
-This tool is also available as an MCP (Model Context Protocol) server, which allows you to access its functionality through the MCP API.
-
-#### Starting the Server
-
-The server is automatically registered in the main application's `mcp-servers.json` file and will be started when the main application is run. Alternatively, you can start it directly:
-
-```bash
-node fixtures/servers/aws_cost_analysis/index.js
-```
-
-#### Available MCP Actions
-
-The AWS Cost Analysis MCP server provides the following actions:
-
-1. **analyze_template**
-   - Analyzes a single CloudFormation/CDK template and provides cost estimates
-   - Parameters:
-     - `template`: The template to analyze ("ec2_template", "container_template", or "serverless_template")
-     - `region` (optional): AWS region for pricing (default: us-east-1)
-     - `duration` (optional): Analysis duration in days (default: 30)
-
-2. **compare_architectures**
-   - Compares costs between different architecture templates
-   - Parameters:
-     - `architectures`: Array of templates to compare (e.g., ["ec2_template", "container_template"])
-     - `region` (optional): AWS region for pricing (default: us-east-1)
-     - `duration` (optional): Analysis duration in days (default: 30)
-
-#### Example Usage
+To analyze a single CloudFormation or CDK template:
 
 ```javascript
-// Example MCP client code
-const result = await mcpClient.call('aws_cost_analysis', 'analyze_template', {
-  template: 'ec2_template',
-  region: 'us-west-2',
-  duration: 60
-});
-
-// Compare architectures
-const comparison = await mcpClient.call('aws_cost_analysis', 'compare_architectures', {
-  architectures: ['ec2_template', 'container_template', 'serverless_template'],
-  region: 'us-east-1'
+const result = await analyze_template({
+  templatePath: 'templates/serverless_template.json',
+  name: 'Serverless Architecture',
+  region: 'us-east-1',
+  options: {
+    includeSavingsPlans: true,
+    includeReservedInstances: false,
+    assumedUtilization: 0.7
+  }
 });
 ```
 
-### Sample Output
+### Comparing Architectures
 
-The comparison will generate:
+To compare costs between different architecture templates:
 
-1. Overall cost comparison between architectures
-2. Service-by-service cost breakdown
-3. Resource count comparison
-4. Cost optimization recommendations
+```javascript
+const result = await compare_architectures({
+  templates: [
+    {
+      path: 'templates/serverless_template.json',
+      name: 'Serverless Architecture'
+    },
+    {
+      path: 'templates/container_template.json',
+      name: 'Container Architecture'
+    }
+  ],
+  generateHtml: true,
+  options: {
+    region: 'us-east-1',
+    reportTitle: 'Serverless vs Container Architecture Comparison',
+    reportPath: 'reports/comparison_report.html'
+  }
+});
+```
 
-## How it Works
+### Saving a Template
 
-The analyzer:
-1. Parses CloudFormation templates
-2. Identifies AWS resources and their configurations
-3. Maps resources to services
-4. Estimates costs based on typical usage patterns and AWS pricing
-5. Generates comparative analysis between architectures
+To save a new CloudFormation/CDK template for analysis:
 
-## Customization
+```javascript
+const result = await save_template({
+  content: JSON.stringify(templateObject),
+  filename: 'new_template.json',
+  overwrite: false
+});
+```
 
-To analyze your own templates:
-1. Replace the templates in the `templates/` directory with your own
-2. Update the paths in `compare_architectures.js` if needed
-3. Adjust the analysis options as necessary:
-   ```javascript
-   const analysisOptions = {
-     region: 'us-east-1',  // Change to your target region
-     duration: 30,         // Analysis duration in days
-     includeDetailedBreakdown: true
-   };
-   ```
+### Listing Available Templates
 
-## Limitations
+To list all available templates for analysis:
 
-- Cost estimates are approximations based on typical usage patterns
-- Actual costs will vary based on real-world usage, data transfer, and other factors
-- The tool does not account for all AWS pricing dimensions (e.g., data transfer costs)
-- Reserved instance discounts are not automatically applied in the analysis
+```javascript
+const result = await list_templates();
+```
 
-## Future Improvements
+## API Reference
 
-- Add support for more AWS services
-- Incorporate reserved instance pricing
-- Add support for Terraform templates
-- Include detailed data transfer cost estimates
-- Implement a web-based UI for easier analysis 
+### analyze_template(params)
+
+Analyzes a single CloudFormation/CDK template for cost estimation.
+
+**Parameters:**
+
+- `params.templatePath` (string): Path to the template file
+- `params.name` (string, optional): Name for the architecture
+- `params.region` (string, optional): AWS region (default: 'us-east-1')
+- `params.options` (object, optional):
+  - `includeSavingsPlans` (boolean): Consider Savings Plans in cost calculations
+  - `includeReservedInstances` (boolean): Consider Reserved Instances in cost calculations
+  - `assumedUtilization` (number): Assumed resource utilization (0-1)
+  - `includeRecommendations` (boolean): Include optimization recommendations
+  - `additionalDetails` (boolean): Include additional resource details
+
+**Returns:**
+
+Object containing the analysis results.
+
+### compare_architectures(params)
+
+Compares costs between different architecture templates.
+
+**Parameters:**
+
+- `params.templates` (array): Array of template objects
+  - `path` (string): Path to the template file
+  - `name` (string): Name for the architecture
+  - `region` (string, optional): AWS region
+- `params.generateHtml` (boolean, optional): Generate an HTML report
+- `params.options` (object, optional):
+  - `region` (string): Default AWS region
+  - `reportTitle` (string): Title for the HTML report
+  - `reportPath` (string): Path to save the HTML report
+
+**Returns:**
+
+Object containing the comparison results and optionally the HTML report.
+
+### save_template(params)
+
+Saves a template to the templates directory.
+
+**Parameters:**
+
+- `params.content` (string): Template content
+- `params.filename` (string): Filename to save as
+- `params.overwrite` (boolean, optional): Overwrite if file exists
+
+**Returns:**
+
+Object containing information about the saved template.
+
+### list_templates()
+
+Lists all available templates.
+
+**Returns:**
+
+Object containing the list of templates.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details. 
