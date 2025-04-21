@@ -1,15 +1,117 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Sample Serverless Architecture Template for AWS CDK Cost Analysis",
+  "Description": "Serverless Microservice Architecture",
   "Resources": {
     "ApiGateway": {
       "Type": "AWS::ApiGateway::RestApi",
       "Properties": {
-        "Name": "ServerlessSampleApi",
-        "Description": "Sample API for serverless architecture"
+        "Name": "ServerlessMicroserviceApi",
+        "Description": "API Gateway for Serverless Microservice Architecture",
+        "EndpointConfiguration": {
+          "Types": [
+            "REGIONAL"
+          ]
+        }
       }
     },
-    "LambdaExecutionRole": {
+    "ApiGatewayRootMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "ResourceId": {
+          "Fn::GetAtt": [
+            "ApiGateway",
+            "RootResourceId"
+          ]
+        },
+        "HttpMethod": "ANY",
+        "AuthorizationType": "NONE",
+        "Integration": {
+          "Type": "MOCK",
+          "IntegrationHttpMethod": "ANY",
+          "PassthroughBehavior": "WHEN_NO_MATCH",
+          "RequestTemplates": {
+            "application/json": "{\"statusCode\": 200}"
+          },
+          "IntegrationResponses": [
+            {
+              "StatusCode": 200,
+              "ResponseTemplates": {
+                "application/json": "{\"message\": \"Welcome to Serverless Microservice API\"}"
+              }
+            }
+          ]
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": 200,
+            "ResponseModels": {
+              "application/json": "Empty"
+            }
+          }
+        ]
+      }
+    },
+    "UsersResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "ParentId": {
+          "Fn::GetAtt": [
+            "ApiGateway",
+            "RootResourceId"
+          ]
+        },
+        "PathPart": "users"
+      }
+    },
+    "AuthResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "ParentId": {
+          "Fn::GetAtt": [
+            "ApiGateway",
+            "RootResourceId"
+          ]
+        },
+        "PathPart": "auth"
+      }
+    },
+    "ProductsResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "ParentId": {
+          "Fn::GetAtt": [
+            "ApiGateway",
+            "RootResourceId"
+          ]
+        },
+        "PathPart": "products"
+      }
+    },
+    "ApiGatewayDeployment": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "DependsOn": [
+        "ApiGatewayRootMethod"
+      ],
+      "Properties": {
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "StageName": "prod"
+      }
+    },
+    "UserFunctionRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
         "AssumeRolePolicyDocument": {
@@ -26,103 +128,364 @@
         },
         "ManagedPolicyArns": [
           "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ],
+        "Policies": [
+          {
+            "PolicyName": "UserFunctionDynamoDBAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "UsersTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
         ]
       }
     },
-    "GetItemsFunction": {
-      "Type": "AWS::Lambda::Function",
+    "AuthFunctionRole": {
+      "Type": "AWS::IAM::Role",
       "Properties": {
-        "Handler": "index.handler",
-        "Role": {
-          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
         },
-        "Code": {
-          "ZipFile": "exports.handler = async (event) => { return { statusCode: 200, body: JSON.stringify({ items: [] }) }; };"
-        },
-        "Runtime": "nodejs14.x",
-        "Timeout": 10,
-        "MemorySize": 128
-      }
-    },
-    "CreateItemFunction": {
-      "Type": "AWS::Lambda::Function",
-      "Properties": {
-        "Handler": "index.handler",
-        "Role": {
-          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
-        },
-        "Code": {
-          "ZipFile": "exports.handler = async (event) => { return { statusCode: 201, body: JSON.stringify({ success: true }) }; };"
-        },
-        "Runtime": "nodejs14.x",
-        "Timeout": 10,
-        "MemorySize": 256
-      }
-    },
-    "ProcessItemsFunction": {
-      "Type": "AWS::Lambda::Function",
-      "Properties": {
-        "Handler": "index.handler",
-        "Role": {
-          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
-        },
-        "Code": {
-          "ZipFile": "exports.handler = async (event) => { /* Process items */ };"
-        },
-        "Runtime": "nodejs14.x",
-        "Timeout": 30,
-        "MemorySize": 512
-      }
-    },
-    "DynamoDBTable": {
-      "Type": "AWS::DynamoDB::Table",
-      "Properties": {
-        "AttributeDefinitions": [
-          {
-            "AttributeName": "id",
-            "AttributeType": "S"
-          }
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         ],
-        "KeySchema": [
+        "Policies": [
           {
-            "AttributeName": "id",
-            "KeyType": "HASH"
+            "PolicyName": "AuthFunctionDynamoDBAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:Query"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "UsersTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
           }
-        ],
-        "BillingMode": "PAY_PER_REQUEST",
-        "TableName": "ServerlessItems"
+        ]
       }
     },
-    "S3Bucket": {
-      "Type": "AWS::S3::Bucket",
+    "ProductFunctionRole": {
+      "Type": "AWS::IAM::Role",
       "Properties": {
-        "BucketName": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ],
+        "Policies": [
+          {
+            "PolicyName": "ProductFunctionDynamoDBAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "ProductsTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Join": [
+                        "",
+                        [
+                          "arn:aws:s3:::",
+                          {
+                            "Ref": "ProductImagesBucket"
+                          },
+                          "/*"
+                        ]
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "UserFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "UserFunctionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "exports.handler = async (event) => { return { statusCode: 200, body: JSON.stringify({ message: 'User service' }) }; };"
+        },
+        "Runtime": "nodejs14.x",
+        "MemorySize": 256,
+        "Timeout": 10,
+        "Environment": {
+          "Variables": {
+            "USERS_TABLE": {
+              "Ref": "UsersTable"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "UserService"
+          }
+        ]
+      }
+    },
+    "AuthFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "AuthFunctionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "exports.handler = async (event) => { return { statusCode: 200, body: JSON.stringify({ message: 'Auth service' }) }; };"
+        },
+        "Runtime": "nodejs14.x",
+        "MemorySize": 256,
+        "Timeout": 10,
+        "Environment": {
+          "Variables": {
+            "USERS_TABLE": {
+              "Ref": "UsersTable"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "AuthService"
+          }
+        ]
+      }
+    },
+    "ProductFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "ProductFunctionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "exports.handler = async (event) => { return { statusCode: 200, body: JSON.stringify({ message: 'Product service' }) }; };"
+        },
+        "Runtime": "nodejs14.x",
+        "MemorySize": 512,
+        "Timeout": 15,
+        "Environment": {
+          "Variables": {
+            "PRODUCTS_TABLE": {
+              "Ref": "ProductsTable"
+            },
+            "PRODUCT_IMAGES_BUCKET": {
+              "Ref": "ProductImagesBucket"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "ProductService"
+          }
+        ]
+      }
+    },
+    "UsersLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "UserFunction",
+            "Arn"
+          ]
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
           "Fn::Join": [
-            "-",
+            "",
             [
-              "serverless-sample-bucket",
+              "arn:aws:execute-api:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":",
               {
                 "Ref": "AWS::AccountId"
-              }
+              },
+              ":",
+              {
+                "Ref": "ApiGateway"
+              },
+              "/*"
             ]
           ]
         }
       }
     },
-    "ApiGatewayRootMethod": {
+    "AuthLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "AuthFunction",
+            "Arn"
+          ]
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:execute-api:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":",
+              {
+                "Ref": "AWS::AccountId"
+              },
+              ":",
+              {
+                "Ref": "ApiGateway"
+              },
+              "/*"
+            ]
+          ]
+        }
+      }
+    },
+    "ProductsLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "ProductFunction",
+            "Arn"
+          ]
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:execute-api:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":",
+              {
+                "Ref": "AWS::AccountId"
+              },
+              ":",
+              {
+                "Ref": "ApiGateway"
+              },
+              "/*"
+            ]
+          ]
+        }
+      }
+    },
+    "UsersMethodGet": {
       "Type": "AWS::ApiGateway::Method",
       "Properties": {
-        "AuthorizationType": "NONE",
+        "RestApiId": {
+          "Ref": "ApiGateway"
+        },
+        "ResourceId": {
+          "Ref": "UsersResource"
+        },
         "HttpMethod": "GET",
-        "ResourceId": {
-          "Fn::GetAtt": ["ApiGateway", "RootResourceId"]
-        },
-        "RestApiId": {
-          "Ref": "ApiGateway"
-        },
+        "AuthorizationType": "NONE",
         "Integration": {
-          "IntegrationHttpMethod": "POST",
           "Type": "AWS_PROXY",
+          "IntegrationHttpMethod": "POST",
           "Uri": {
             "Fn::Join": [
               "",
@@ -133,7 +496,10 @@
                 },
                 ":lambda:path/2015-03-31/functions/",
                 {
-                  "Fn::GetAtt": ["GetItemsFunction", "Arn"]
+                  "Fn::GetAtt": [
+                    "UserFunction",
+                    "Arn"
+                  ]
                 },
                 "/invocations"
               ]
@@ -142,32 +508,20 @@
         }
       }
     },
-    "ItemsResource": {
-      "Type": "AWS::ApiGateway::Resource",
-      "Properties": {
-        "ParentId": {
-          "Fn::GetAtt": ["ApiGateway", "RootResourceId"]
-        },
-        "PathPart": "items",
-        "RestApiId": {
-          "Ref": "ApiGateway"
-        }
-      }
-    },
-    "ItemsPostMethod": {
+    "AuthMethodPost": {
       "Type": "AWS::ApiGateway::Method",
       "Properties": {
-        "AuthorizationType": "NONE",
-        "HttpMethod": "POST",
-        "ResourceId": {
-          "Ref": "ItemsResource"
-        },
         "RestApiId": {
           "Ref": "ApiGateway"
         },
+        "ResourceId": {
+          "Ref": "AuthResource"
+        },
+        "HttpMethod": "POST",
+        "AuthorizationType": "NONE",
         "Integration": {
-          "IntegrationHttpMethod": "POST",
           "Type": "AWS_PROXY",
+          "IntegrationHttpMethod": "POST",
           "Uri": {
             "Fn::Join": [
               "",
@@ -178,7 +532,10 @@
                 },
                 ":lambda:path/2015-03-31/functions/",
                 {
-                  "Fn::GetAtt": ["CreateItemFunction", "Arn"]
+                  "Fn::GetAtt": [
+                    "AuthFunction",
+                    "Arn"
+                  ]
                 },
                 "/invocations"
               ]
@@ -187,49 +544,298 @@
         }
       }
     },
-    "ApiGatewayDeployment": {
-      "Type": "AWS::ApiGateway::Deployment",
-      "DependsOn": ["ApiGatewayRootMethod", "ItemsPostMethod"],
+    "ProductsMethodGet": {
+      "Type": "AWS::ApiGateway::Method",
       "Properties": {
         "RestApiId": {
           "Ref": "ApiGateway"
         },
-        "StageName": "prod"
+        "ResourceId": {
+          "Ref": "ProductsResource"
+        },
+        "HttpMethod": "GET",
+        "AuthorizationType": "NONE",
+        "Integration": {
+          "Type": "AWS_PROXY",
+          "IntegrationHttpMethod": "POST",
+          "Uri": {
+            "Fn::Join": [
+              "",
+              [
+                "arn:aws:apigateway:",
+                {
+                  "Ref": "AWS::Region"
+                },
+                ":lambda:path/2015-03-31/functions/",
+                {
+                  "Fn::GetAtt": [
+                    "ProductFunction",
+                    "Arn"
+                  ]
+                },
+                "/invocations"
+              ]
+            ]
+          }
+        }
       }
     },
-    "EventRule": {
-      "Type": "AWS::Events::Rule",
+    "UsersTable": {
+      "Type": "AWS::DynamoDB::Table",
       "Properties": {
-        "Description": "Scheduled rule to process items",
-        "ScheduleExpression": "rate(1 hour)",
-        "State": "ENABLED",
-        "Targets": [
+        "TableName": "serverless-users",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
           {
-            "Arn": {
-              "Fn::GetAtt": ["ProcessItemsFunction", "Arn"]
-            },
-            "Id": "ProcessItemsTarget"
+            "AttributeName": "userId",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "email",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "userId",
+            "KeyType": "HASH"
+          }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "EmailIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "email",
+                "KeyType": "HASH"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "ALL"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "UserService"
           }
         ]
       }
     },
-    "PermissionForEventsToInvokeLambda": {
-      "Type": "AWS::Lambda::Permission",
+    "ProductsTable": {
+      "Type": "AWS::DynamoDB::Table",
       "Properties": {
-        "FunctionName": {
-          "Ref": "ProcessItemsFunction"
+        "TableName": "serverless-products",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "productId",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "category",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "productId",
+            "KeyType": "HASH"
+          }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "CategoryIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "category",
+                "KeyType": "HASH"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "ALL"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "ProductService"
+          }
+        ]
+      }
+    },
+    "ProductImagesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "AccessControl": "Private",
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedHeaders": [
+                "*"
+              ],
+              "AllowedMethods": [
+                "GET",
+                "PUT",
+                "POST",
+                "DELETE",
+                "HEAD"
+              ],
+              "AllowedOrigins": [
+                "*"
+              ],
+              "MaxAge": 3600
+            }
+          ]
         },
-        "Action": "lambda:InvokeFunction",
-        "Principal": "events.amazonaws.com",
-        "SourceArn": {
-          "Fn::GetAtt": ["EventRule", "Arn"]
-        }
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "TransitionToIA",
+              "Status": "Enabled",
+              "Transitions": [
+                {
+                  "StorageClass": "STANDARD_IA",
+                  "TransitionInDays": 30
+                }
+              ]
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Service",
+            "Value": "ProductService"
+          }
+        ]
+      }
+    },
+    "CloudFrontDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Origins": [
+            {
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "ProductImagesBucket",
+                  "DomainName"
+                ]
+              },
+              "Id": "S3Origin",
+              "S3OriginConfig": {
+                "OriginAccessIdentity": ""
+              }
+            },
+            {
+              "DomainName": {
+                "Fn::Join": [
+                  "",
+                  [
+                    {
+                      "Ref": "ApiGateway"
+                    },
+                    ".execute-api.",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    ".amazonaws.com"
+                  ]
+                ]
+              },
+              "Id": "ApiGatewayOrigin",
+              "OriginPath": "/prod",
+              "CustomOriginConfig": {
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "https-only"
+              }
+            }
+          ],
+          "Enabled": true,
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "ApiGatewayOrigin",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": [
+              "DELETE",
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PATCH",
+              "POST",
+              "PUT"
+            ],
+            "CachedMethods": [
+              "GET",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "ForwardedValues": {
+              "QueryString": true,
+              "Cookies": {
+                "Forward": "all"
+              },
+              "Headers": [
+                "Authorization"
+              ]
+            },
+            "MinTTL": 0,
+            "DefaultTTL": 0,
+            "MaxTTL": 0
+          },
+          "CacheBehaviors": [
+            {
+              "PathPattern": "/images/*",
+              "TargetOriginId": "S3Origin",
+              "ViewerProtocolPolicy": "redirect-to-https",
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "OPTIONS"
+              ],
+              "CachedMethods": [
+                "GET",
+                "HEAD",
+                "OPTIONS"
+              ],
+              "ForwardedValues": {
+                "QueryString": false,
+                "Cookies": {
+                  "Forward": "none"
+                }
+              },
+              "MinTTL": 86400,
+              "DefaultTTL": 86400,
+              "MaxTTL": 31536000
+            }
+          ],
+          "PriceClass": "PriceClass_100",
+          "HttpVersion": "http2",
+          "ViewerCertificate": {
+            "CloudFrontDefaultCertificate": true
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ServerlessMicroservices"
+          }
+        ]
+      }
+    },
+    "CloudWatchDashboard": {
+      "Type": "AWS::CloudWatch::Dashboard",
+      "Properties": {
+        "DashboardName": "ServerlessMicroservices",
+        "DashboardBody": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/Lambda\",\"Invocations\",\"FunctionName\",\"UserFunction\"],[\"AWS/Lambda\",\"Invocations\",\"FunctionName\",\"AuthFunction\"],[\"AWS/Lambda\",\"Invocations\",\"FunctionName\",\"ProductFunction\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"us-east-1\",\"title\":\"Lambda Invocations\",\"period\":300}},{\"type\":\"metric\",\"x\":12,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"UserFunction\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"AuthFunction\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"ProductFunction\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"us-east-1\",\"title\":\"Lambda Duration\",\"period\":300}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ApiGateway\",\"Count\",\"ApiName\",\"ServerlessMicroserviceApi\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"us-east-1\",\"title\":\"API Gateway Requests\",\"period\":300}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"serverless-users\"],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"serverless-products\"],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"serverless-users\"],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"serverless-products\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"us-east-1\",\"title\":\"DynamoDB Capacity\",\"period\":300}}]}"
       }
     }
   },
   "Outputs": {
-    "ApiGatewayEndpoint": {
-      "Description": "Endpoint for the API Gateway",
+    "ApiEndpoint": {
+      "Description": "API Gateway endpoint URL",
       "Value": {
         "Fn::Join": [
           "",
@@ -244,6 +850,21 @@
             },
             ".amazonaws.com/prod"
           ]
+        ]
+      }
+    },
+    "CloudFrontDistributionId": {
+      "Description": "CloudFront Distribution ID",
+      "Value": {
+        "Ref": "CloudFrontDistribution"
+      }
+    },
+    "CloudFrontDomainName": {
+      "Description": "CloudFront Distribution Domain Name",
+      "Value": {
+        "Fn::GetAtt": [
+          "CloudFrontDistribution",
+          "DomainName"
         ]
       }
     }
