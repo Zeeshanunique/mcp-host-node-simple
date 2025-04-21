@@ -1,159 +1,223 @@
 /**
- * Tests for the CDK Stack Analyzer module
+ * Tests for the CDK analyzer module
  */
 
-import { jest } from '@jest/globals';
-import fs from 'fs/promises';
-import path from 'path';
-import { analyzeCdkStack } from '../cdk_analyzer.js';
-import { readPricingPatterns } from '../helpers.js';
-import { calculateAllServiceCosts } from '../price_calculator.js';
+const fs = require('fs');
+const path = require('path');
+const { 
+  analyzeCdkStack,
+  getStackName,
+  extractResources,
+  countResourcesByType,
+  extractServicesFromResources
+} = require('../cdk_analyzer');
 
-// Mock dependencies
-jest.mock('fs/promises');
-jest.mock('../helpers.js');
-jest.mock('../price_calculator.js');
+// Mock the fs module
+jest.mock('fs', () => ({
+  readFileSync: jest.fn(),
+  existsSync: jest.fn()
+}));
 
-describe('CDK Stack Analyzer', () => {
-  // Sample template for testing
+describe('CDK Analyzer', () => {
+  beforeEach(() => {
+    // Reset all mocks before each test
+    jest.clearAllMocks();
+  });
+  
   const mockTemplate = {
-    Description: 'AWS CloudFormation template for MyService Stack',
     Resources: {
-      MyLambdaFunction: {
+      LambdaFunction1: {
         Type: 'AWS::Lambda::Function',
         Properties: {
-          Handler: 'index.handler',
-          Runtime: 'nodejs18.x',
-          MemorySize: 512
+          FunctionName: 'test-function-1',
+          Runtime: 'nodejs14.x',
+          MemorySize: 128,
+          Timeout: 30
         }
       },
-      MyS3Bucket: {
+      ApiGateway: {
+        Type: 'AWS::ApiGateway::RestApi',
+        Properties: {
+          Name: 'TestAPI'
+        }
+      },
+      S3Bucket: {
         Type: 'AWS::S3::Bucket',
         Properties: {
-          BucketName: 'my-test-bucket'
+          BucketName: 'test-bucket'
         }
       },
-      MyDynamoDBTable: {
+      DynamoTable: {
         Type: 'AWS::DynamoDB::Table',
         Properties: {
-          TableName: 'my-test-table',
-          ReadCapacityUnits: 5,
-          WriteCapacityUnits: 5
+          TableName: 'TestTable',
+          BillingMode: 'PAY_PER_REQUEST'
         }
       }
     }
   };
-
-  const mockTemplateString = JSON.stringify(mockTemplate);
-  const mockTemplatePath = 'path/to/template.json';
   
-  // Set up mocks
-  beforeEach(() => {
-    jest.clearAllMocks();
-    
-    // Mock file reading
-    fs.readFile.mockResolvedValue(mockTemplateString);
-    
-    // Mock pricing patterns
-    readPricingPatterns.mockResolvedValue({
-      Lambda: { price_per_request: 0.0000002, price_per_gb_second: 0.0000166667 },
-      S3: { price_per_gb_storage: 0.023, price_per_request: 0.0000004 },
-      DynamoDB: { price_per_rcu: 0.00000125, price_per_wcu: 0.00000125 }
+  describe('getStackName', () => {
+    it('should extract stack name from template path', () => {
+      const templatePath = '/path/to/ServerlessStack.template.json';
+      const stackName = getStackName(templatePath);
+      expect(stackName).toBe('ServerlessStack');
     });
     
-    // Mock cost calculation
-    calculateAllServiceCosts.mockReturnValue({
-      Lambda: { monthly: 10, yearly: 120 },
-      S3: { monthly: 5, yearly: 60 },
-      DynamoDB: { monthly: 15, yearly: 180 }
+    it('should handle paths with multiple dots', () => {
+      const templatePath = '/path/to/Serverless.Stack.v1.template.json';
+      const stackName = getStackName(templatePath);
+      expect(stackName).toBe('Serverless.Stack.v1');
     });
   });
-
-  test('analyzeCdkStack should return analysis results for a valid template', async () => {
-    const result = await analyzeCdkStack(mockTemplatePath);
-    
-    // Verify file was read
-    expect(fs.readFile).toHaveBeenCalledWith(mockTemplatePath, 'utf8');
-    
-    // Verify pricing patterns were loaded
-    expect(readPricingPatterns).toHaveBeenCalled();
-    
-    // Verify cost calculation was called
-    expect(calculateAllServiceCosts).toHaveBeenCalled();
-    
-    // Test result structure
-    expect(result).toHaveProperty('stackName', 'MyService');
-    expect(result).toHaveProperty('services');
-    expect(result).toHaveProperty('resourceCounts');
-    expect(result).toHaveProperty('costEstimates');
-    expect(result).toHaveProperty('usageDetails');
-    expect(result).toHaveProperty('analysisTimestamp');
-    
-    // Verify resource counts
-    expect(result.resourceCounts['AWS::Lambda::Function']).toBe(1);
-    expect(result.resourceCounts['AWS::S3::Bucket']).toBe(1);
-    expect(result.resourceCounts['AWS::DynamoDB::Table']).toBe(1);
-    
-    // Verify services list
-    expect(result.services).toContain('Lambda');
-    expect(result.services).toContain('S3');
-    expect(result.services).toContain('DynamoDB');
-    
-    // Verify cost estimates
-    expect(result.costEstimates.Lambda.monthly).toBe(10);
-    expect(result.costEstimates.S3.monthly).toBe(5);
-    expect(result.costEstimates.DynamoDB.monthly).toBe(15);
-  });
-
-  test('analyzeCdkStack should handle errors gracefully', async () => {
-    // Set up the mock to throw an error
-    fs.readFile.mockRejectedValue(new Error('File not found'));
-    
-    const result = await analyzeCdkStack(mockTemplatePath);
-    
-    // Verify error response
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('File not found');
-  });
-
-  test('analyzeCdkStack should include template when requested', async () => {
-    const result = await analyzeCdkStack(mockTemplatePath, { includeTemplate: true });
-    
-    // Verify template is included
-    expect(result.template).toEqual(mockTemplate);
-  });
-
-  test('analyzeCdkStack should respect usage assumptions', async () => {
-    const options = {
-      usageAssumptions: {
-        Lambda: {
-          avg_monthly_requests: 500000,
-          avg_memory_mb: 1024
+  
+  describe('extractResources', () => {
+    it('should extract resources from template', () => {
+      const resources = extractResources(mockTemplate);
+      
+      expect(resources).toHaveProperty('AWS::Lambda::Function');
+      expect(resources).toHaveProperty('AWS::ApiGateway::RestApi');
+      expect(resources).toHaveProperty('AWS::S3::Bucket');
+      expect(resources).toHaveProperty('AWS::DynamoDB::Table');
+      
+      expect(resources['AWS::Lambda::Function']).toHaveLength(1);
+      expect(resources['AWS::ApiGateway::RestApi']).toHaveLength(1);
+      expect(resources['AWS::S3::Bucket']).toHaveLength(1);
+      expect(resources['AWS::DynamoDB::Table']).toHaveLength(1);
+      
+      expect(resources['AWS::Lambda::Function'][0]).toEqual({
+        LogicalId: 'LambdaFunction1',
+        Properties: {
+          FunctionName: 'test-function-1',
+          Runtime: 'nodejs14.x',
+          MemorySize: 128,
+          Timeout: 30
         }
-      }
-    };
+      });
+    });
     
-    await analyzeCdkStack(mockTemplatePath, options);
-    
-    // Verify that calculateAllServiceCosts was called with the overridden usage assumptions
-    const callArgs = calculateAllServiceCosts.mock.calls[0];
-    
-    // Extract the usage details passed to calculateAllServiceCosts
-    const [, usageDetails] = callArgs;
-    
-    // Check that our assumptions were used
-    expect(usageDetails.Lambda.avg_monthly_requests).toBe(500000);
+    it('should handle empty template', () => {
+      const resources = extractResources({});
+      expect(resources).toEqual({});
+    });
   });
-
-  test('analyzeCdkStack should handle templates without resources', async () => {
-    // Mock an empty template
-    const emptyTemplate = { Description: 'Empty Stack' };
-    fs.readFile.mockResolvedValue(JSON.stringify(emptyTemplate));
+  
+  describe('countResourcesByType', () => {
+    it('should count resources by type', () => {
+      const resources = {
+        'AWS::Lambda::Function': [{ LogicalId: 'Lambda1' }, { LogicalId: 'Lambda2' }],
+        'AWS::S3::Bucket': [{ LogicalId: 'Bucket1' }]
+      };
+      
+      const counts = countResourcesByType(resources);
+      
+      expect(counts).toEqual({
+        'AWS::Lambda::Function': 2,
+        'AWS::S3::Bucket': 1
+      });
+    });
     
-    const result = await analyzeCdkStack(mockTemplatePath);
+    it('should handle empty resources', () => {
+      const counts = countResourcesByType({});
+      expect(counts).toEqual({});
+    });
+  });
+  
+  describe('extractServicesFromResources', () => {
+    it('should extract AWS services from resource types', () => {
+      const resources = {
+        'AWS::Lambda::Function': [{}],
+        'AWS::ApiGateway::RestApi': [{}],
+        'AWS::S3::Bucket': [{}],
+        'AWS::DynamoDB::Table': [{}]
+      };
+      
+      const services = extractServicesFromResources(resources);
+      
+      expect(services).toContain('Lambda');
+      expect(services).toContain('API Gateway');
+      expect(services).toContain('S3');
+      expect(services).toContain('DynamoDB');
+      expect(services).toHaveLength(4);
+    });
     
-    // Verify empty resources
-    expect(result.resourceCounts).toEqual({});
-    expect(result.services).toEqual([]);
+    it('should handle unknown resource types', () => {
+      const resources = {
+        'AWS::Unknown::Resource': [{}]
+      };
+      
+      const services = extractServicesFromResources(resources);
+      expect(services).toHaveLength(0);
+    });
+  });
+  
+  describe('analyzeCdkStack', () => {
+    it('should analyze CDK stack template and return complete analysis', () => {
+      const templatePath = '/path/to/template.json';
+      
+      // Mock the file system functions
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(JSON.stringify(mockTemplate));
+      
+      const result = analyzeCdkStack(templatePath);
+      
+      expect(result).toHaveProperty('stackName');
+      expect(result).toHaveProperty('template');
+      expect(result).toHaveProperty('resources');
+      expect(result).toHaveProperty('resourceCounts');
+      expect(result).toHaveProperty('services');
+      expect(result).toHaveProperty('totalEstimatedCost');
+      expect(result).toHaveProperty('estimatedCostBreakdown');
+      
+      expect(result.services).toContain('Lambda');
+      expect(result.services).toContain('API Gateway');
+      expect(result.services).toContain('S3');
+      expect(result.services).toContain('DynamoDB');
+      
+      expect(result.resourceCounts).toEqual({
+        'AWS::Lambda::Function': 1,
+        'AWS::ApiGateway::RestApi': 1,
+        'AWS::S3::Bucket': 1,
+        'AWS::DynamoDB::Table': 1
+      });
+    });
+    
+    it('should handle template not found', () => {
+      const templatePath = '/path/to/nonexistent.json';
+      
+      // Mock the file system functions
+      fs.existsSync.mockReturnValue(false);
+      
+      const result = analyzeCdkStack(templatePath);
+      
+      expect(result).toHaveProperty('error');
+      expect(result.error).toBe('Template file not found');
+    });
+    
+    it('should handle invalid JSON template', () => {
+      const templatePath = '/path/to/invalid.json';
+      
+      // Mock the file system functions
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue('invalid json');
+      
+      const result = analyzeCdkStack(templatePath);
+      
+      expect(result).toHaveProperty('error');
+      expect(result.error).toContain('Failed to parse template');
+    });
+    
+    it('should respect custom name option', () => {
+      const templatePath = '/path/to/template.json';
+      const options = { name: 'CustomName' };
+      
+      // Mock the file system functions
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(JSON.stringify(mockTemplate));
+      
+      const result = analyzeCdkStack(templatePath, options);
+      
+      expect(result.name).toBe('CustomName');
+    });
   });
 }); 
