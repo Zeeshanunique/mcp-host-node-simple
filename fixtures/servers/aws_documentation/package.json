@@ -2,12 +2,5 @@
   "name": "aws-documentation-mcp",
   "version": "1.0.0",
   "type": "module",
-  "private": true,
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12",
-    "html-to-markdown": "^1.0.0",
-    "zod": "^3.22.4"
-  }
+  "private": true
 } 
