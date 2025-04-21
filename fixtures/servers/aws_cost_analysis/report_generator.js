@@ -441,4 +441,159 @@ export const generateCostSummary = (analysisResults) => {
   });
   
   return summary;
+};
+
+/**
+ * Generate a comparison report between serverless and EC2-based architectures
+ * @param {Object} data Object containing serverless and EC2 analysis results 
+ * @returns {string} Markdown comparison report
+ */
+export const generateComparisonReport = (data) => {
+  const { serverless, ec2, options = {} } = data;
+  
+  if (!serverless || !ec2) {
+    throw new Error('Both serverless and EC2 analysis results are required');
+  }
+  
+  // Initialize the report content
+  let report = `# AWS Architecture Cost Comparison\n\n`;
+  report += `**Analysis Date:** ${new Date().toLocaleDateString()}\n`;
+  report += `**Region:** ${options.region || 'us-east-1'}\n`;
+  report += `**Duration:** ${options.duration || 30} days\n\n`;
+  
+  // Overall comparison
+  const serverlessCost = serverless.totalCost || 0;
+  const ec2Cost = ec2.totalCost || 0;
+  const difference = Math.abs(serverlessCost - ec2Cost);
+  const percentageDiff = ((difference / Math.max(serverlessCost, ec2Cost)) * 100).toFixed(2);
+  const cheaper = serverlessCost < ec2Cost ? 'Serverless' : 'EC2-based';
+  
+  report += `## Cost Summary\n\n`;
+  report += `| Architecture | Monthly Cost | Annual Cost | Relative Cost |\n`;
+  report += `|--------------|--------------|-------------|---------------|\n`;
+  report += `| Serverless | ${formatCost(serverlessCost)} | ${formatCost(serverlessCost * 12)} | ${serverlessCost < ec2Cost ? '✅ Cheaper' : '❌ More expensive'} |\n`;
+  report += `| EC2-based | ${formatCost(ec2Cost)} | ${formatCost(ec2Cost * 12)} | ${ec2Cost < serverlessCost ? '✅ Cheaper' : '❌ More expensive'} |\n\n`;
+  
+  report += `The **${cheaper}** architecture is **${formatCost(difference)}** cheaper per month (${percentageDiff}% difference).\n\n`;
+  
+  // Service breakdown comparison
+  report += `## Service Cost Breakdown\n\n`;
+  
+  // Get all unique services across both architectures
+  const allServices = new Set([
+    ...(serverless.services || []),
+    ...(ec2.services || [])
+  ]);
+  
+  report += `| Service | Serverless Cost | EC2-based Cost | Difference |\n`;
+  report += `|---------|----------------|----------------|------------|\n`;
+  
+  // Add rows for each service
+  Array.from(allServices).sort().forEach(service => {
+    const serverlessServiceCost = (serverless.costEstimates && serverless.costEstimates[service] && 
+      serverless.costEstimates[service].monthly_cost) || 0;
+    
+    const ec2ServiceCost = (ec2.costEstimates && ec2.costEstimates[service] && 
+      ec2.costEstimates[service].monthly_cost) || 0;
+    
+    const serviceDiff = Math.abs(serverlessServiceCost - ec2ServiceCost);
+    let diffText = '';
+    
+    if (serviceDiff > 0) {
+      diffText = serverlessServiceCost < ec2ServiceCost ? 
+        `✅ ${formatCost(serviceDiff)} cheaper` : 
+        `❌ ${formatCost(serviceDiff)} more`;
+    } else {
+      diffText = 'Same cost';
+    }
+    
+    report += `| ${service} | ${formatCost(serverlessServiceCost)} | ${formatCost(ec2ServiceCost)} | ${diffText} |\n`;
+  });
+  
+  // Resource counts comparison
+  report += `\n## Resource Count Comparison\n\n`;
+  
+  // Get all unique resource types
+  const allResourceTypes = new Set([
+    ...Object.keys(serverless.resourceCounts || {}),
+    ...Object.keys(ec2.resourceCounts || {})
+  ]);
+  
+  report += `| Resource Type | Serverless Count | EC2-based Count |\n`;
+  report += `|---------------|-----------------|----------------|\n`;
+  
+  Array.from(allResourceTypes).sort().forEach(resourceType => {
+    const serverlessCount = (serverless.resourceCounts && serverless.resourceCounts[resourceType]) || 0;
+    const ec2Count = (ec2.resourceCounts && ec2.resourceCounts[resourceType]) || 0;
+    
+    report += `| ${resourceType} | ${serverlessCount} | ${ec2Count} |\n`;
+  });
+  
+  // Pros and cons section
+  report += `\n## Architecture Pros & Cons\n\n`;
+  
+  report += `### Serverless Architecture\n\n`;
+  report += `**Pros:**\n`;
+  report += `- Auto-scaling without manual configuration\n`;
+  report += `- Pay only for actual usage\n`;
+  report += `- Lower operational overhead\n`;
+  report += `- Built-in high availability\n\n`;
+  
+  report += `**Cons:**\n`;
+  report += `- Cold start latency\n`;
+  report += `- Limited execution duration\n`;
+  report += `- Potentially higher costs at very large scale\n`;
+  report += `- Less control over infrastructure\n\n`;
+  
+  report += `### EC2-based Architecture\n\n`;
+  report += `**Pros:**\n`;
+  report += `- Full control over infrastructure\n`;
+  report += `- Predictable performance\n`;
+  report += `- No execution time limits\n`;
+  report += `- Potentially cheaper at consistent high loads\n\n`;
+  
+  report += `**Cons:**\n`;
+  report += `- Manual scaling configuration required\n`;
+  report += `- Higher operational overhead\n`;
+  report += `- Pay for provisioned capacity, not usage\n`;
+  report += `- More complex high availability setup\n\n`;
+  
+  // Recommendations section
+  report += `## Recommendations\n\n`;
+  
+  if (serverlessCost < ec2Cost) {
+    report += `Based on the cost analysis, the **Serverless** architecture is recommended for this workload. `;
+    report += `It provides a ${percentageDiff}% cost saving (${formatCost(difference)}/month) compared to the EC2-based approach.\n\n`;
+    
+    report += `Consider using the Serverless architecture if:\n`;
+    report += `- Your workload has variable or unpredictable traffic patterns\n`;
+    report += `- You want to minimize operational overhead\n`;
+    report += `- Fast deployment and iteration are important\n`;
+    report += `- The application can be broken down into small, independent functions\n`;
+  } else {
+    report += `Based on the cost analysis, the **EC2-based** architecture is recommended for this workload. `;
+    report += `It provides a ${percentageDiff}% cost saving (${formatCost(difference)}/month) compared to the Serverless approach.\n\n`;
+    
+    report += `Consider using the EC2-based architecture if:\n`;
+    report += `- Your workload has consistent, predictable traffic\n`;
+    report += `- You require more control over the infrastructure\n`;
+    report += `- Your application has long-running processes\n`;
+    report += `- You have existing operational expertise with EC2\n`;
+  }
+  
+  report += `\n## Potential Optimizations\n\n`;
+  
+  report += `### Serverless Optimizations\n`;
+  report += `- Right-size Lambda memory configurations\n`;
+  report += `- Optimize code to reduce execution time\n`;
+  report += `- Use provisioned concurrency for critical functions\n`;
+  report += `- Implement caching strategies to reduce function invocations\n\n`;
+  
+  report += `### EC2 Optimizations\n`;
+  report += `- Use Reserved Instances for predictable workloads\n`;
+  report += `- Implement auto-scaling based on actual usage patterns\n`;
+  report += `- Right-size instance types based on application requirements\n`;
+  report += `- Consider Spot Instances for non-critical workloads\n`;
+  
+  return report;
 }; 
