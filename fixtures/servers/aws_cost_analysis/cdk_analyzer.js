@@ -462,4 +462,19 @@ const estimateEC2Usage = (resources, defaultUsage) => {
  * This is an alias for analyzeCdkStack since CloudFormation templates
  * follow the same format as CDK synthesized templates
  */
-export const analyzeCloudFormationTemplate = analyzeCdkStack; 
+export const analyzeCloudFormationTemplate = analyzeCdkStack;
+
+// Export private functions for testing purposes
+export const __test__ = {
+  getStackName,
+  extractResources,
+  countResourcesByType,
+  extractServicesFromResources,
+  getResourcesForService,
+  estimateUsageDetails,
+  estimateLambdaUsage,
+  estimateS3Usage,
+  estimateDynamoDBUsage,
+  estimateApiGatewayUsage,
+  estimateEC2Usage
+}; 
