@@ -2,9 +2,9 @@
  * AWS Documentation MCP Server implementation.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SseServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { McpServer } from '@modelcontextprotocol/sdk/dist/esm/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/dist/esm/server/stdio.js';
+import { SseServerTransport } from '@modelcontextprotocol/sdk/dist/esm/server/sse.js';
 import { z } from 'zod';
 import axios from 'axios';
 import fs from 'fs';
