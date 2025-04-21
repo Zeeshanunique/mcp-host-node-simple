@@ -3,7 +3,7 @@
  */
 
 import * as cheerio from 'cheerio';
-import { convert } from 'html-to-markdown';
+import TurndownService from 'turndown';
 import { RecommendationResult } from './models.js';
 
 /**
@@ -98,13 +98,13 @@ export function extractContentFromHtml(html) {
       mainContent.find(tag).remove();
     }
     
-    // Convert the cleaned HTML to markdown
-    const content = convert(mainContent.html(), {
-      // Convert headings using # format
+    // Convert the cleaned HTML to markdown using turndown
+    const turndownService = new TurndownService({
       headingStyle: 'atx',
-      // Automatically create links
-      linkReferenceStyle: 'full',
+      codeBlockStyle: 'fenced'
     });
+    
+    const content = turndownService.turndown(mainContent.html() || '');
     
     if (!content) {
       return '<e>Page failed to be simplified from HTML</e>';
