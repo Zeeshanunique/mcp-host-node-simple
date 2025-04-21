@@ -2,7 +2,7 @@
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "EC2-based Microservice Architecture",
   "Resources": {
-    "VPC": {
+    "MicroservicesVPC": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
         "CidrBlock": "10.0.0.0/16",
@@ -11,7 +11,7 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "MicroservicesVPC"
+            "Value": "EC2MicroservicesVPC"
           }
         ]
       }
@@ -20,15 +20,26 @@
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "VpcId": {
-          "Ref": "VPC"
+          "Ref": "MicroservicesVPC"
         },
-        "AvailabilityZone": "us-east-1a",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
         "CidrBlock": "10.0.1.0/24",
         "MapPublicIpOnLaunch": true,
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Public Subnet 1"
+            "Value": "PublicSubnet1"
+          },
+          {
+            "Key": "Tier",
+            "Value": "Public"
           }
         ]
       }
@@ -37,15 +48,82 @@
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "VpcId": {
-          "Ref": "VPC"
+          "Ref": "MicroservicesVPC"
         },
-        "AvailabilityZone": "us-east-1b",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
         "CidrBlock": "10.0.2.0/24",
         "MapPublicIpOnLaunch": true,
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Public Subnet 2"
+            "Value": "PublicSubnet2"
+          },
+          {
+            "Key": "Tier",
+            "Value": "Public"
+          }
+        ]
+      }
+    },
+    "PrivateSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.0.3.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateSubnet1"
+          },
+          {
+            "Key": "Tier",
+            "Value": "Private"
+          }
+        ]
+      }
+    },
+    "PrivateSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "CidrBlock": "10.0.4.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateSubnet2"
+          },
+          {
+            "Key": "Tier",
+            "Value": "Private"
           }
         ]
       }
@@ -56,39 +134,66 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "MicroservicesIGW"
+            "Value": "EC2MicroservicesIGW"
           }
         ]
       }
     },
-    "GatewayAttachment": {
+    "InternetGatewayAttachment": {
       "Type": "AWS::EC2::VPCGatewayAttachment",
       "Properties": {
-        "VpcId": {
-          "Ref": "VPC"
-        },
         "InternetGatewayId": {
           "Ref": "InternetGateway"
+        },
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
         }
+      }
+    },
+    "NatGatewayEIP1": {
+      "Type": "AWS::EC2::EIP",
+      "DependsOn": "InternetGatewayAttachment",
+      "Properties": {
+        "Domain": "vpc"
+      }
+    },
+    "NatGateway1": {
+      "Type": "AWS::EC2::NatGateway",
+      "Properties": {
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "NatGatewayEIP1",
+            "AllocationId"
+          ]
+        },
+        "SubnetId": {
+          "Ref": "PublicSubnet1"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "NatGateway1"
+          }
+        ]
       }
     },
     "PublicRouteTable": {
       "Type": "AWS::EC2::RouteTable",
       "Properties": {
         "VpcId": {
-          "Ref": "VPC"
+          "Ref": "MicroservicesVPC"
         },
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Public Route Table"
+            "Value": "PublicRouteTable"
           }
         ]
       }
     },
     "PublicRoute": {
       "Type": "AWS::EC2::Route",
-      "DependsOn": "GatewayAttachment",
+      "DependsOn": "InternetGatewayAttachment",
       "Properties": {
         "RouteTableId": {
           "Ref": "PublicRouteTable"
@@ -99,34 +204,82 @@
         }
       }
     },
-    "Subnet1RouteTableAssociation": {
+    "PublicSubnet1RouteTableAssociation": {
       "Type": "AWS::EC2::SubnetRouteTableAssociation",
       "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
         "SubnetId": {
           "Ref": "PublicSubnet1"
-        },
-        "RouteTableId": {
-          "Ref": "PublicRouteTable"
         }
       }
     },
-    "Subnet2RouteTableAssociation": {
+    "PublicSubnet2RouteTableAssociation": {
       "Type": "AWS::EC2::SubnetRouteTableAssociation",
       "Properties": {
-        "SubnetId": {
-          "Ref": "PublicSubnet2"
-        },
         "RouteTableId": {
           "Ref": "PublicRouteTable"
+        },
+        "SubnetId": {
+          "Ref": "PublicSubnet2"
         }
       }
     },
-    "WebServerSecurityGroup": {
+    "PrivateRouteTable1": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateRouteTable1"
+          }
+        ]
+      }
+    },
+    "PrivateRoute1": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRouteTable1"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "NatGateway1"
+        }
+      }
+    },
+    "PrivateSubnet1RouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRouteTable1"
+        },
+        "SubnetId": {
+          "Ref": "PrivateSubnet1"
+        }
+      }
+    },
+    "PrivateSubnet2RouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRouteTable1"
+        },
+        "SubnetId": {
+          "Ref": "PrivateSubnet2"
+        }
+      }
+    },
+    "ALBSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
-        "GroupDescription": "Enable HTTP and SSH access",
+        "GroupDescription": "Security group for Application Load Balancer",
         "VpcId": {
-          "Ref": "VPC"
+          "Ref": "MicroservicesVPC"
         },
         "SecurityGroupIngress": [
           {
@@ -140,12 +293,59 @@
             "FromPort": 443,
             "ToPort": 443,
             "CidrIp": "0.0.0.0/0"
-          },
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ALBSecurityGroup"
+          }
+        ]
+      }
+    },
+    "EC2SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for EC2 instances",
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "SecurityGroupIngress": [
           {
             "IpProtocol": "tcp",
             "FromPort": 22,
             "ToPort": 22,
             "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "SourceSecurityGroupId": {
+              "Ref": "ALBSecurityGroup"
+            }
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 8080,
+            "ToPort": 8080,
+            "SourceSecurityGroupId": {
+              "Ref": "ALBSecurityGroup"
+            }
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "SourceSecurityGroupId": {
+              "Ref": "ALBSecurityGroup"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "EC2SecurityGroup"
           }
         ]
       }
@@ -153,139 +353,229 @@
     "DBSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
-        "GroupDescription": "Database Security Group",
+        "GroupDescription": "Security group for RDS database",
         "VpcId": {
-          "Ref": "VPC"
+          "Ref": "MicroservicesVPC"
         },
         "SecurityGroupIngress": [
           {
             "IpProtocol": "tcp",
-            "FromPort": 3306,
-            "ToPort": 3306,
+            "FromPort": 5432,
+            "ToPort": 5432,
             "SourceSecurityGroupId": {
-              "Ref": "WebServerSecurityGroup"
+              "Ref": "EC2SecurityGroup"
             }
           }
-        ]
-      }
-    },
-    "WebServerInstance1": {
-      "Type": "AWS::EC2::Instance",
-      "Properties": {
-        "InstanceType": "t3.medium",
-        "SecurityGroupIds": [
-          {
-            "Ref": "WebServerSecurityGroup"
-          }
-        ],
-        "SubnetId": {
-          "Ref": "PublicSubnet1"
-        },
-        "ImageId": "ami-0c55b159cbfafe1f0",
-        "Tags": [
-          {
-            "Key": "Name",
-            "Value": "WebServer1"
-          }
-        ],
-        "UserData": {
-          "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl start httpd\nsystemctl enable httpd\necho '<html><body><h1>Microservice 1 running on EC2</h1></body></html>' > /var/www/html/index.html"
-        }
-      }
-    },
-    "WebServerInstance2": {
-      "Type": "AWS::EC2::Instance",
-      "Properties": {
-        "InstanceType": "t3.medium",
-        "SecurityGroupIds": [
-          {
-            "Ref": "WebServerSecurityGroup"
-          }
-        ],
-        "SubnetId": {
-          "Ref": "PublicSubnet1"
-        },
-        "ImageId": "ami-0c55b159cbfafe1f0",
-        "Tags": [
-          {
-            "Key": "Name",
-            "Value": "WebServer2"
-          }
-        ],
-        "UserData": {
-          "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl start httpd\nsystemctl enable httpd\necho '<html><body><h1>Microservice 2 running on EC2</h1></body></html>' > /var/www/html/index.html"
-        }
-      }
-    },
-    "ApiServerInstance": {
-      "Type": "AWS::EC2::Instance",
-      "Properties": {
-        "InstanceType": "t3.large",
-        "SecurityGroupIds": [
-          {
-            "Ref": "WebServerSecurityGroup"
-          }
-        ],
-        "SubnetId": {
-          "Ref": "PublicSubnet2"
-        },
-        "ImageId": "ami-0c55b159cbfafe1f0",
-        "Tags": [
-          {
-            "Key": "Name",
-            "Value": "ApiServer"
-          }
-        ],
-        "UserData": {
-          "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y nodejs npm\nnpm install -g pm2\necho 'console.log(\"API Server running\");' > app.js\npm2 start app.js"
-        }
-      }
-    },
-    "DBInstance": {
-      "Type": "AWS::RDS::DBInstance",
-      "Properties": {
-        "AllocatedStorage": "100",
-        "DBInstanceClass": "db.m5.large",
-        "Engine": "mysql",
-        "MasterUsername": "admin",
-        "MasterUserPassword": "adminPassword123",
-        "MultiAZ": true,
-        "StorageType": "gp2",
-        "DBSubnetGroupName": {
-          "Ref": "DBSubnetGroup"
-        },
-        "VPCSecurityGroups": [
-          {
-            "Ref": "DBSecurityGroup"
-          }
         ],
         "Tags": [
           {
             "Key": "Name",
-            "Value": "MicroservicesDB"
+            "Value": "DBSecurityGroup"
           }
         ]
       }
     },
-    "DBSubnetGroup": {
-      "Type": "AWS::RDS::DBSubnetGroup",
+    "ApiGatewayEC2": {
+      "Type": "AWS::EC2::Instance",
       "Properties": {
-        "DBSubnetGroupDescription": "Subnet group for RDS instance",
-        "SubnetIds": [
+        "InstanceType": "t3.small",
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "KeyName": "microservices-key",
+        "SubnetId": {
+          "Ref": "PrivateSubnet1"
+        },
+        "SecurityGroupIds": [
           {
-            "Ref": "PublicSubnet1"
-          },
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "yum update -y\n",
+                "yum install -y docker\n",
+                "service docker start\n",
+                "chkconfig docker on\n",
+                "docker pull nginx:latest\n",
+                "docker run -d -p 80:80 -p 8080:8080 nginx:latest\n"
+              ]
+            ]
+          }
+        },
+        "Tags": [
           {
-            "Ref": "PublicSubnet2"
+            "Key": "Name",
+            "Value": "ApiGatewayService"
           }
         ]
       }
     },
-    "ElasticLoadBalancer": {
+    "AuthServiceEC2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.small",
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "KeyName": "microservices-key",
+        "SubnetId": {
+          "Ref": "PrivateSubnet1"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "yum update -y\n",
+                "yum install -y docker\n",
+                "service docker start\n",
+                "chkconfig docker on\n",
+                "docker pull node:14\n",
+                "docker run -d -p 3000:3000 node:14\n"
+              ]
+            ]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "AuthService"
+          }
+        ]
+      }
+    },
+    "UserServiceEC2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.small",
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "KeyName": "microservices-key",
+        "SubnetId": {
+          "Ref": "PrivateSubnet1"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "yum update -y\n",
+                "yum install -y docker\n",
+                "service docker start\n",
+                "chkconfig docker on\n",
+                "docker pull node:14\n",
+                "docker run -d -p 3000:3000 node:14\n"
+              ]
+            ]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "UserService"
+          }
+        ]
+      }
+    },
+    "PaymentServiceEC2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.small",
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "KeyName": "microservices-key",
+        "SubnetId": {
+          "Ref": "PrivateSubnet2"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "yum update -y\n",
+                "yum install -y docker\n",
+                "service docker start\n",
+                "chkconfig docker on\n",
+                "docker pull node:14\n",
+                "docker run -d -p 3000:3000 node:14\n"
+              ]
+            ]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PaymentService"
+          }
+        ]
+      }
+    },
+    "NotificationServiceEC2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.small",
+        "ImageId": "ami-0c55b159cbfafe1f0",
+        "KeyName": "microservices-key",
+        "SubnetId": {
+          "Ref": "PrivateSubnet2"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "EC2SecurityGroup"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+                "yum update -y\n",
+                "yum install -y docker\n",
+                "service docker start\n",
+                "chkconfig docker on\n",
+                "docker pull node:14\n",
+                "docker run -d -p 3000:3000 node:14\n"
+              ]
+            ]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "NotificationService"
+          }
+        ]
+      }
+    },
+    "ApplicationLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
       "Properties": {
-        "Name": "MicroservicesLB",
+        "Name": "MicroservicesALB",
         "Scheme": "internet-facing",
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ],
         "Subnets": [
           {
             "Ref": "PublicSubnet1"
@@ -296,81 +586,361 @@
         ],
         "SecurityGroups": [
           {
-            "Ref": "WebServerSecurityGroup"
+            "Ref": "ALBSecurityGroup"
           }
         ],
-        "Type": "application"
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MicroservicesALB"
+          }
+        ]
       }
     },
-    "S3LogBucket": {
+    "ALBTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckTimeoutSeconds": 5,
+        "HealthyThresholdCount": 2,
+        "Name": "ApiGatewayTargetGroup",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "TargetType": "instance",
+        "Targets": [
+          {
+            "Id": {
+              "Ref": "ApiGatewayEC2"
+            },
+            "Port": 80
+          }
+        ],
+        "UnhealthyThresholdCount": 5,
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ApiGatewayTargetGroup"
+          }
+        ]
+      }
+    },
+    "ALBListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "ALBTargetGroup"
+            }
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "ApplicationLoadBalancer"
+        },
+        "Port": 80,
+        "Protocol": "HTTP"
+      }
+    },
+    "DatabaseSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Subnet group for RDS database",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateSubnet1"
+          },
+          {
+            "Ref": "PrivateSubnet2"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "DatabaseSubnetGroup"
+          }
+        ]
+      }
+    },
+    "DatabaseInstance": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "AllocatedStorage": 20,
+        "DBInstanceClass": "db.t3.small",
+        "DBName": "microservicesdb",
+        "Engine": "postgres",
+        "EngineVersion": "13.4",
+        "MasterUsername": "dbadmin",
+        "MasterUserPassword": "DbPassword123",
+        "MultiAZ": false,
+        "StorageType": "gp2",
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnetGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DBSecurityGroup"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MicroservicesDatabase"
+          }
+        ]
+      }
+    },
+    "ElasticacheSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for ElastiCache Redis",
+        "VpcId": {
+          "Ref": "MicroservicesVPC"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 6379,
+            "ToPort": 6379,
+            "SourceSecurityGroupId": {
+              "Ref": "EC2SecurityGroup"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ElasticacheSecurityGroup"
+          }
+        ]
+      }
+    },
+    "ElasticacheSubnetGroup": {
+      "Type": "AWS::ElastiCache::SubnetGroup",
+      "Properties": {
+        "Description": "Subnet group for ElastiCache Redis",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateSubnet1"
+          },
+          {
+            "Ref": "PrivateSubnet2"
+          }
+        ]
+      }
+    },
+    "ElasticacheCluster": {
+      "Type": "AWS::ElastiCache::CacheCluster",
+      "Properties": {
+        "CacheNodeType": "cache.t3.small",
+        "Engine": "redis",
+        "NumCacheNodes": 1,
+        "CacheSubnetGroupName": {
+          "Ref": "ElasticacheSubnetGroup"
+        },
+        "VpcSecurityGroupIds": [
+          {
+            "Ref": "ElasticacheSecurityGroup"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MicroservicesRedis"
+          }
+        ]
+      }
+    },
+    "S3Bucket": {
       "Type": "AWS::S3::Bucket",
       "Properties": {
-        "AccessControl": "LogDeliveryWrite",
+        "BucketName": {
+          "Fn::Join": [
+            "-",
+            [
+              "microservices-assets",
+              {
+                "Ref": "AWS::AccountId"
+              }
+            ]
+          ]
+        },
+        "AccessControl": "Private",
         "VersioningConfiguration": {
           "Status": "Enabled"
-        }
-      }
-    },
-    "CloudWatchDashboard": {
-      "Type": "AWS::CloudWatch::Dashboard",
-      "Properties": {
-        "DashboardName": "EC2-Microservices-Dashboard",
-        "DashboardBody": "{\"widgets\":[]}"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MicroservicesAssets"
+          }
+        ]
       }
     },
     "CloudFrontDistribution": {
       "Type": "AWS::CloudFront::Distribution",
       "Properties": {
         "DistributionConfig": {
-          "Enabled": true,
-          "DefaultCacheBehavior": {
-            "ForwardedValues": {
-              "QueryString": true,
-              "Cookies": {
-                "Forward": "all"
-              }
-            },
-            "TargetOriginId": "ELB-Origin",
-            "ViewerProtocolPolicy": "redirect-to-https"
-          },
           "Origins": [
             {
               "DomainName": {
                 "Fn::GetAtt": [
-                  "ElasticLoadBalancer",
+                  "S3Bucket",
+                  "DomainName"
+                ]
+              },
+              "Id": "S3Origin",
+              "S3OriginConfig": {
+                "OriginAccessIdentity": ""
+              }
+            },
+            {
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "ApplicationLoadBalancer",
                   "DNSName"
                 ]
               },
-              "Id": "ELB-Origin",
+              "Id": "ALBOrigin",
               "CustomOriginConfig": {
                 "HTTPPort": 80,
                 "HTTPSPort": 443,
                 "OriginProtocolPolicy": "http-only"
               }
             }
+          ],
+          "Enabled": true,
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "ALBOrigin",
+            "ForwardedValues": {
+              "QueryString": true,
+              "Cookies": {
+                "Forward": "all"
+              }
+            },
+            "ViewerProtocolPolicy": "redirect-to-https"
+          },
+          "CacheBehaviors": [
+            {
+              "PathPattern": "/static/*",
+              "TargetOriginId": "S3Origin",
+              "ForwardedValues": {
+                "QueryString": false,
+                "Cookies": {
+                  "Forward": "none"
+                }
+              },
+              "ViewerProtocolPolicy": "redirect-to-https"
+            }
+          ],
+          "PriceClass": "PriceClass_100"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MicroservicesCDN"
+          }
+        ]
+      }
+    },
+    "CPUAlarmHigh": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Alarm if CPU too high",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/EC2",
+        "Statistic": "Average",
+        "Period": 300,
+        "EvaluationPeriods": 2,
+        "Threshold": 90,
+        "AlarmActions": [],
+        "ComparisonOperator": "GreaterThanThreshold",
+        "Dimensions": [
+          {
+            "Name": "InstanceId",
+            "Value": {
+              "Ref": "ApiGatewayEC2"
+            }
+          }
+        ]
+      }
+    },
+    "CloudWatchDashboard": {
+      "Type": "AWS::CloudWatch::Dashboard",
+      "Properties": {
+        "DashboardName": "EC2MicroservicesDashboard",
+        "DashboardBody": {
+          "Fn::Join": [
+            "",
+            [
+              "{\"widgets\":[",
+              "{\"type\":\"metric\",\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/EC2\",\"CPUUtilization\",\"InstanceId\",\"",
+              {
+                "Ref": "ApiGatewayEC2"
+              },
+              "\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"period\":300,\"stat\":\"Average\",\"title\":\"API Gateway CPU\"}},",
+              "{\"type\":\"metric\",\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/EC2\",\"CPUUtilization\",\"InstanceId\",\"",
+              {
+                "Ref": "AuthServiceEC2"
+              },
+              "\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"period\":300,\"stat\":\"Average\",\"title\":\"Auth Service CPU\"}},",
+              "{\"type\":\"metric\",\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/RDS\",\"CPUUtilization\",\"DBInstanceIdentifier\",\"",
+              {
+                "Ref": "DatabaseInstance"
+              },
+              "\"]],\"view\":\"timeSeries\",\"stacked\":false,\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"period\":300,\"stat\":\"Average\",\"title\":\"RDS CPU\"}}",
+              "]}"
+            ]
           ]
         }
       }
     }
   },
   "Outputs": {
-    "LoadBalancerDNS": {
-      "Description": "DNS Name of the load balancer",
+    "LoadBalancerDNSName": {
+      "Description": "DNS Name of the Application Load Balancer",
       "Value": {
         "Fn::GetAtt": [
-          "ElasticLoadBalancer",
+          "ApplicationLoadBalancer",
           "DNSName"
         ]
       }
     },
-    "CloudFrontURL": {
-      "Description": "CloudFront Distribution Domain Name",
+    "CloudFrontDistributionDomainName": {
+      "Description": "Domain Name of the CloudFront Distribution",
       "Value": {
         "Fn::GetAtt": [
           "CloudFrontDistribution",
           "DomainName"
         ]
       }
+    },
+    "DatabaseEndpoint": {
+      "Description": "Endpoint of the RDS Database",
+      "Value": {
+        "Fn::GetAtt": [
+          "DatabaseInstance",
+          "Endpoint.Address"
+        ]
+      }
     }
   }
+} 
 } 
