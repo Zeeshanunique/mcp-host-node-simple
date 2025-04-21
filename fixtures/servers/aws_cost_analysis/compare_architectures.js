@@ -7,9 +7,13 @@
  * Uses the CDK Analyzer to estimate costs for each architecture.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { analyzeCdkStack } = require('./cdk_analyzer');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { analyzeCdkStack } from './cdk_analyzer.js';
+
+// Get the directory name of the current module
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Define paths to templates
 const EC2_TEMPLATE_PATH = path.join(__dirname, 'templates', 'ec2_template.json');
@@ -73,8 +77,8 @@ async function compareArchitectures() {
   const containerAnalysis = await analyzeCdkStack(CONTAINER_TEMPLATE_PATH, analysisOptions);
 
   // Extract total costs
-  const ec2Cost = ec2Analysis.estimatedCost;
-  const containerCost = containerAnalysis.estimatedCost;
+  const ec2Cost = ec2Analysis.costEstimates?.totalCost || 0;
+  const containerCost = containerAnalysis.costEstimates?.totalCost || 0;
   const pctDifference = calculatePercentageDifference(ec2Cost, containerCost);
 
   console.log('\n📊 ARCHITECTURE COST COMPARISON SUMMARY');
@@ -91,15 +95,15 @@ async function compareArchitectures() {
   
   // Combine all services from both architectures
   const allServices = new Set([
-    ...Object.keys(ec2Analysis.serviceBreakdown || {}),
-    ...Object.keys(containerAnalysis.serviceBreakdown || {})
+    ...Object.keys(ec2Analysis.costEstimates?.serviceCosts || {}),
+    ...Object.keys(containerAnalysis.costEstimates?.serviceCosts || {})
   ]);
   
   const comparisonRows = [];
   
   allServices.forEach(service => {
-    const ec2ServiceCost = ec2Analysis.serviceBreakdown?.[service] || 0;
-    const containerServiceCost = containerAnalysis.serviceBreakdown?.[service] || 0;
+    const ec2ServiceCost = ec2Analysis.costEstimates?.serviceCosts?.[service] || 0;
+    const containerServiceCost = containerAnalysis.costEstimates?.serviceCosts?.[service] || 0;
     const diff = containerServiceCost - ec2ServiceCost;
     const pctDiff = ec2ServiceCost > 0 
       ? calculatePercentageDifference(ec2ServiceCost, containerServiceCost) 
@@ -204,28 +208,28 @@ async function compareArchitectures() {
   console.log('\nRecommendations:');
   
   // EC2 recommendations
-  if (ec2Analysis.serviceBreakdown?.['EC2'] > 0) {
+  if (ec2Analysis.costEstimates?.serviceCosts?.['EC2'] > 0) {
     console.log('- Consider reserved instances for EC2 to save up to 75% compared to on-demand pricing');
   }
   
   // ECS/Fargate recommendations
-  if (containerAnalysis.serviceBreakdown?.['ECS'] > 0 || containerAnalysis.serviceBreakdown?.['Fargate'] > 0) {
+  if (containerAnalysis.costEstimates?.serviceCosts?.['ECS'] > 0 || containerAnalysis.costEstimates?.serviceCosts?.['Fargate'] > 0) {
     console.log('- Use Fargate Spot for non-critical workloads to save up to 70% on container costs');
     console.log('- Optimize container CPU and memory settings to avoid over-provisioning');
   }
   
   // RDS recommendations
-  if (ec2Analysis.serviceBreakdown?.['RDS'] > 0 || containerAnalysis.serviceBreakdown?.['RDS'] > 0) {
+  if (ec2Analysis.costEstimates?.serviceCosts?.['RDS'] > 0 || containerAnalysis.costEstimates?.serviceCosts?.['RDS'] > 0) {
     console.log('- Consider RDS reserved instances for database workloads');
   }
   
   // NAT Gateway recommendations
-  if (containerAnalysis.serviceBreakdown?.['NATGateway'] > 0) {
+  if (containerAnalysis.costEstimates?.serviceCosts?.['NAT Gateway'] > 0) {
     console.log('- NAT Gateways are expensive, consider consolidating to one NAT Gateway per AZ');
   }
   
   // S3 recommendations
-  if (ec2Analysis.serviceBreakdown?.['S3'] > 0 || containerAnalysis.serviceBreakdown?.['S3'] > 0) {
+  if (ec2Analysis.costEstimates?.serviceCosts?.['S3'] > 0 || containerAnalysis.costEstimates?.serviceCosts?.['S3'] > 0) {
     console.log('- Implement S3 lifecycle policies to transition data to cheaper storage tiers');
   }
   
