@@ -23,7 +23,7 @@
     "lint:fix": "eslint --ext .ts,.tsx src/ --fix",
     "test": "node -r dotenv/config -e \"process.env.NODE_ENV='test'\" && jest",
     "test:esm": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config=jest.config.mjs",
-    "test:aws-cost": "cd fixtures/servers/aws_cost_analysis && node --experimental-vm-modules ../../../node_modules/jest/bin/jest.js --config=jest.config.js"
+    "test:aws-cost": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js fixtures/servers/aws_cost_analysis/tests/cdk_analyzer.test.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
