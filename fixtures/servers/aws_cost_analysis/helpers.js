@@ -4,9 +4,13 @@
  * Utility functions to support AWS cost analysis operations
  */
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+// Get the directory name of the current module
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Format a number as a currency
@@ -14,7 +18,7 @@ const { execSync } = require('child_process');
  * @param {string} currency - The currency symbol to use
  * @returns {string} - Formatted currency string
  */
-function formatCurrency(amount, currency = '$') {
+export function formatCurrency(amount, currency = '$') {
   return `${currency}${amount.toFixed(2)}`;
 }
 
@@ -23,7 +27,7 @@ function formatCurrency(amount, currency = '$') {
  * @param {number} value - The value to format
  * @returns {string} - Formatted percentage string
  */
-function formatPercentage(value) {
+export function formatPercentage(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -31,7 +35,7 @@ function formatPercentage(value) {
  * Get AWS profile from environment variables or default
  * @returns {string} - AWS profile name
  */
-function getAwsProfile() {
+export function getAwsProfile() {
   return process.env.AWS_PROFILE || 'default';
 }
 
@@ -40,7 +44,7 @@ function getAwsProfile() {
  * @param {string} command - AWS command to execute
  * @returns {string} - Command output
  */
-function executeAwsCommand(command) {
+export function executeAwsCommand(command) {
   try {
     const profile = getAwsProfile();
     const fullCommand = `aws ${command} --profile ${profile}`;
@@ -56,7 +60,7 @@ function executeAwsCommand(command) {
  * @param {string} filePath - Path to the JSON file
  * @returns {Object} - Parsed JSON object
  */
-function readJsonFile(filePath) {
+export function readJsonFile(filePath) {
   try {
     const fullPath = path.resolve(filePath);
     const content = fs.readFileSync(fullPath, 'utf8');
@@ -72,7 +76,7 @@ function readJsonFile(filePath) {
  * @param {string} filePath - Path to the JSON file
  * @param {Object} data - Data to write
  */
-function writeJsonFile(filePath, data) {
+export function writeJsonFile(filePath, data) {
   try {
     const fullPath = path.resolve(filePath);
     fs.writeFileSync(fullPath, JSON.stringify(data, null, 2), 'utf8');
@@ -86,7 +90,7 @@ function writeJsonFile(filePath, data) {
  * Ensure a directory exists
  * @param {string} dirPath - Path to the directory
  */
-function ensureDirectoryExists(dirPath) {
+export function ensureDirectoryExists(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
@@ -96,19 +100,84 @@ function ensureDirectoryExists(dirPath) {
  * Get temporary directory path
  * @returns {string} - Path to the temporary directory
  */
-function getTempDir() {
+export function getTempDir() {
   const tempDir = path.join(process.cwd(), 'tmp');
   ensureDirectoryExists(tempDir);
   return tempDir;
 }
 
-module.exports = {
-  formatCurrency,
-  formatPercentage,
-  getAwsProfile,
-  executeAwsCommand,
-  readJsonFile,
-  writeJsonFile,
-  ensureDirectoryExists,
-  getTempDir
-}; 
+/**
+ * Read the AWS cost patterns from patterns.json
+ * @returns {Promise<Array>} Pricing patterns
+ */
+export async function readPricingPatterns() {
+  try {
+    const patternsPath = path.join(__dirname, 'patterns.json');
+    const fileContent = await fs.promises.readFile(patternsPath, 'utf8');
+    return JSON.parse(fileContent);
+  } catch (error) {
+    console.warn(`Warning: Could not read patterns.json. Error: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Load a template file from the templates directory
+ * @param {string} templateName - Name of the template file
+ * @returns {Promise<string>} Template content
+ */
+export async function loadTemplate(templateName) {
+  try {
+    const templatePath = path.join(__dirname, 'templates', templateName);
+    return await fs.promises.readFile(templatePath, 'utf8');
+  } catch (error) {
+    console.error(`Error loading template ${templateName}: ${error.message}`);
+    throw new Error(`Failed to load template: ${error.message}`);
+  }
+}
+
+/**
+ * Save content to a file
+ * @param {string} filePath - Path to save the file
+ * @param {string} content - Content to save
+ * @returns {Promise<string>} Path to the saved file
+ */
+export async function saveToFile(filePath, content) {
+  try {
+    // Ensure the directory exists
+    const directory = path.dirname(filePath);
+    await fs.promises.mkdir(directory, { recursive: true });
+    
+    // Write the content to the file
+    await fs.promises.writeFile(filePath, content, 'utf8');
+    
+    return filePath;
+  } catch (error) {
+    console.error(`Error saving file to ${filePath}: ${error.message}`);
+    throw new Error(`Failed to save file: ${error.message}`);
+  }
+}
+
+/**
+ * Calculate projected growth in costs over time
+ * @param {number} baseCost - Initial cost
+ * @param {number} growthRate - Annual growth rate
+ * @param {number} years - Number of years to project
+ * @returns {Array} Yearly projected costs
+ */
+export function calculateGrowthProjection(baseCost, growthRate, years = 3) {
+  const projections = [];
+  let currentCost = baseCost;
+  
+  for (let i = 0; i < years; i++) {
+    projections.push({
+      year: i + 1,
+      monthly: currentCost,
+      annually: currentCost * 12
+    });
+    
+    currentCost *= (1 + growthRate);
+  }
+  
+  return projections;
+} 
