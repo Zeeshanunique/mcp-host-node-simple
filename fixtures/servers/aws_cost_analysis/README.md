@@ -1,144 +1,88 @@
-# AWS CDK Stack Cost Analyzer
+# AWS Architecture Cost Analysis
 
-A tool for analyzing AWS CDK stacks and estimating infrastructure costs.
+This tool analyzes and compares the costs between different AWS architecture approaches, specifically:
+- EC2-based architectures
+- Container-based architectures
 
-## Overview
+## Files
 
-The AWS CDK Stack Cost Analyzer parses CDK synthesized templates or CloudFormation templates to extract resource information, estimate usage patterns, and calculate the potential cost of your infrastructure.
+- `cdk_analyzer.js` - Core analyzer that processes CloudFormation/CDK templates and estimates costs
+- `compare_architectures.js` - Script that compares EC2-based and container-based architectures
+- `templates/` - Directory containing sample CloudFormation templates
+  - `ec2_template.json` - Template for EC2-based microservice architecture
+  - `container_template.json` - Template for container-based microservice architecture
 
-Key features:
-- Analyze CDK stack templates for cost estimation
-- Calculate costs across multiple AWS services
-- Apply Free Tier benefits and cost optimizations
-- Generate detailed cost reports
-- CLI tool for easy integration
+## How to Run
 
-## Installation
+### Prerequisites
+
+- Node.js (version 14 or higher)
+- npm or yarn
+
+### Installation
 
 ```bash
-# Clone the repository
-git clone [repository-url]
-cd aws-cost-analysis-mcp
-
 # Install dependencies
 npm install
-
-# Make the CLI executable
-chmod +x ./cli.js
-
-# Link the CLI tool (optional)
-npm link
 ```
 
-## Usage
+### Running the Comparison Analysis
 
-### Command Line Interface
-
-The AWS CDK Stack Cost Analyzer provides a command-line interface for analyzing CDK stacks and generating cost reports.
-
-```bash
-# Analyze a CDK stack template
-aws-cost-analyzer analyze path/to/template.json
-
-# Generate a cost report
-aws-cost-analyzer report path/to/analysis-results.json -o cost-report.md
-
-# Show help
-aws-cost-analyzer --help
+On Windows:
+```
+node fixtures/servers/aws_cost_analysis/compare_architectures.js
 ```
 
-### Options for `analyze` command
-
+On Linux/MacOS:
 ```
-Options:
-  -o, --output <file>       Output file for the analysis results (JSON)
-  -r, --report <file>       Generate a cost report (Markdown)
-  -a, --assumptions <file>  JSON file with usage assumptions
-  -f, --free-tier           Apply free tier discounts (default: true)
-  -t, --include-template    Include the template in the output
-  -s, --summary             Print a summary to the console (default: true)
-  -h, --help                Display help
+node fixtures/servers/aws_cost_analysis/compare_architectures.js
+# Or using the executable directly
+./fixtures/servers/aws_cost_analysis/compare_architectures.js
 ```
 
-### Options for `report` command
+### Sample Output
 
-```
-Options:
-  -o, --output <file>     Output file for the report
-  -f, --format <format>   Report format (markdown) (default: "markdown")
-  -h, --help              Display help
-```
+The comparison will generate:
 
-## Supported Services
+1. Overall cost comparison between architectures
+2. Service-by-service cost breakdown
+3. Resource count comparison
+4. Cost optimization recommendations
 
-The cost analyzer currently supports the following AWS services:
+## How it Works
 
-- AWS Lambda
-- Amazon S3
-- Amazon DynamoDB
-- Amazon API Gateway
-- Amazon EC2
-- AWS CloudFront
-- Amazon RDS
-- Amazon SQS
-- Amazon SNS
+The analyzer:
+1. Parses CloudFormation templates
+2. Identifies AWS resources and their configurations
+3. Maps resources to services
+4. Estimates costs based on typical usage patterns and AWS pricing
+5. Generates comparative analysis between architectures
 
-## Custom Usage Assumptions
+## Customization
 
-You can provide custom usage assumptions to get more accurate cost estimates. Create a JSON file with your assumptions and pass it to the analyzer using the `-a` option.
-
-Example assumptions file:
-
-```json
-{
-  "Lambda": {
-    "avg_monthly_requests": 5000000,
-    "avg_memory_size": 256,
-    "avg_duration_ms": 800
-  },
-  "S3": {
-    "storage_gb": 500,
-    "monthly_get_requests": 1000000,
-    "monthly_put_requests": 200000
-  },
-  "DynamoDB": {
-    "storage_gb": 50,
-    "provisioned_mode": false,
-    "monthly_read_request_units": 2000000,
-    "monthly_write_request_units": 1000000
-  }
-}
-```
-
-## API Usage
-
-You can also use the analyzer programmatically in your code:
-
-```javascript
-import { analyzeCdkStack } from './cdk_analyzer.js';
-import { generateCostReport } from './report_generator.js';
-
-// Analyze a CDK stack
-const results = await analyzeCdkStack('path/to/template.json', {
-  applyFreeTier: true,
-  usageAssumptions: { /* your assumptions */ }
-});
-
-// Generate a cost report
-const report = await generateCostReport(results, {
-  outputFormat: 'markdown',
-  outputDir: 'reports',
-  fileName: 'cost-report.md'
-});
-```
+To analyze your own templates:
+1. Replace the templates in the `templates/` directory with your own
+2. Update the paths in `compare_architectures.js` if needed
+3. Adjust the analysis options as necessary:
+   ```javascript
+   const analysisOptions = {
+     region: 'us-east-1',  // Change to your target region
+     duration: 30,         // Analysis duration in days
+     includeDetailedBreakdown: true
+   };
+   ```
 
 ## Limitations
 
-- Cost estimates are based on current AWS pricing which may change over time
-- Resource usage patterns are estimated and actual costs may vary
-- Not all AWS services and resource types are supported
-- The analyzer does not account for special pricing arrangements or reserved instances
+- Cost estimates are approximations based on typical usage patterns
+- Actual costs will vary based on real-world usage, data transfer, and other factors
+- The tool does not account for all AWS pricing dimensions (e.g., data transfer costs)
+- Reserved instance discounts are not automatically applied in the analysis
 
-## License
+## Future Improvements
 
-MIT 
+- Add support for more AWS services
+- Incorporate reserved instance pricing
+- Add support for Terraform templates
+- Include detailed data transfer cost estimates
+- Implement a web-based UI for easier analysis 
