@@ -2,14 +2,10 @@
  * AWS Documentation MCP Server implementation.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/dist/esm/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/dist/esm/server/stdio.js';
-import { SseServerTransport } from '@modelcontextprotocol/sdk/dist/esm/server/sse.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import {
   extractContentFromHtml,
   formatDocumentationResult,
@@ -283,23 +279,7 @@ async ({ url }, ctx) => {
 async function main() {
   try {
     console.log('[AWS Documentation Server] Starting...');
-    
-    // Parse command line arguments
-    const args = process.argv.slice(2);
-    const useSSE = args.includes('--sse');
-    const portIndex = args.indexOf('--port');
-    const port = portIndex >= 0 && args.length > portIndex + 1 ? parseInt(args[portIndex + 1], 10) : 8888;
-    
-    // Set up the appropriate transport
-    let transport;
-    if (useSSE) {
-      console.log(`[AWS Documentation Server] Using SSE transport on port ${port}`);
-      transport = new SseServerTransport({ port });
-    } else {
-      console.log('[AWS Documentation Server] Using standard stdio transport');
-      transport = new StdioServerTransport();
-    }
-    
+    const transport = new StdioServerTransport();
     await server.connect(transport);
     console.log('[AWS Documentation Server] Connected');
   } catch (error) {
