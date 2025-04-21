@@ -6,7 +6,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { calculateServiceCost, readBedrockPatterns } from './helpers.js';
+import { readPricingPatterns, calculateGrowthProjection } from './helpers.js';
+import { calculateAllServiceCosts } from './price_calculator.js';
 
 // Get the directory name of the current module
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const analyzeCdkStack = async (templatePath, options = {}) => {
   try {
     // Parse pricing patterns 
-    const pricingPatterns = await readBedrockPatterns();
+    const pricingPatterns = await readPricingPatterns();
     
     // Read and parse the CDK stack template
     const templateContent = await fs.readFile(templatePath, 'utf8');
@@ -38,14 +39,22 @@ export const analyzeCdkStack = async (templatePath, options = {}) => {
     // Extract services from resource types
     const services = extractServicesFromResources(Object.keys(resourceCounts));
     
-    // Calculate service costs
-    const costEstimates = calculateAllServiceCosts(services, resources, pricingPatterns, options);
+    // Estimate service usage based on resources
+    const usageDetails = {};
+    services.forEach(serviceName => {
+      const serviceResources = getResourcesForService(serviceName, resources);
+      usageDetails[serviceName] = estimateUsageDetails(serviceName, serviceResources, options);
+    });
+    
+    // Calculate service costs using the price calculator
+    const costEstimates = calculateAllServiceCosts(services, usageDetails);
     
     return {
       stackName,
       services,
       resourceCounts,
       costEstimates,
+      usageDetails,
       template: options.includeTemplate ? template : null,
       analysisTimestamp: new Date().toISOString()
     };
@@ -154,43 +163,6 @@ const extractServicesFromResources = (resourceTypes) => {
 };
 
 /**
- * Calculate costs for all services in the stack
- * @param {Array} services List of AWS services
- * @param {Object} resources Resources object from template
- * @param {Object} pricingPatterns Pricing patterns
- * @param {Object} options Analysis options
- * @returns {Object} Cost estimates by service
- */
-const calculateAllServiceCosts = (services, resources, pricingPatterns, options) => {
-  const costEstimates = {};
-  
-  services.forEach(service => {
-    costEstimates[service] = estimateServiceCost(service, resources, pricingPatterns, options);
-  });
-  
-  return costEstimates;
-};
-
-/**
- * Estimate the cost for a specific service
- * @param {string} serviceName Service name
- * @param {Object} resources Resources from the template
- * @param {Object} pricingPatterns Pricing patterns
- * @param {Object} options Analysis options
- * @returns {Object} Cost estimate for the service
- */
-const estimateServiceCost = (serviceName, resources, pricingPatterns, options) => {
-  // Get service resources
-  const serviceResources = getResourcesForService(serviceName, resources);
-  
-  // Get usage details based on the resources
-  const usageDetails = estimateUsageDetails(serviceName, serviceResources, options);
-  
-  // Calculate service cost with the usage details
-  return calculateServiceCost(serviceName, usageDetails, pricingPatterns);
-};
-
-/**
  * Filter resources for a specific service
  * @param {string} serviceName Service name
  * @param {Object} resources All resources
@@ -243,8 +215,9 @@ const estimateUsageDetails = (serviceName, serviceResources, options) => {
     avg_resource_count: serviceResources.length || 1,
     data_transfer_gb: 50,
     storage_gb: 20,
-    usage_hours: 720, // 24 * 30 hours in a month
-    instance_type: 't3.micro'
+    usage_hours: 730, // 24 * 30 hours in a month
+    instance_type: 't3.micro',
+    apply_free_tier: options.applyFreeTier !== false
   };
   
   // Override defaults with options if provided
@@ -461,6 +434,25 @@ const estimateEC2Usage = (resources, defaultUsage) => {
   
   // Set usage hours (usually 24/7)
   usage.usage_hours = defaultUsage.usage_hours;
+  
+  // Add EBS details
+  const ebsVolumes = resources.filter(r => r.Type === 'AWS::EC2::Volume');
+  let totalSize = 0;
+  
+  ebsVolumes.forEach(volume => {
+    if (volume.Properties && volume.Properties.Size) {
+      totalSize += parseInt(volume.Properties.Size, 10) || 8;
+    } else {
+      totalSize += 8; // Default 8 GB
+    }
+  });
+  
+  // If no explicit volumes, estimate based on instance count
+  if (totalSize === 0) {
+    totalSize = usage.instance_count * 8; // Assume 8 GB per instance
+  }
+  
+  usage.ebs_storage_gb = totalSize;
   
   return usage;
 };
