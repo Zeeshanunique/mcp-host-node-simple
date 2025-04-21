@@ -53,13 +53,13 @@ class SimpleMCPServer:
             }
         }
         
-    async def echo_handler(self, params):
+    def echo_handler(self, params):
         message = params.get("message", "")
         return {
             "content": [{"type": "text", "text": f"Python echo: {message}"}]
         }
         
-    async def add_handler(self, params):
+    def add_handler(self, params):
         a = params.get("a", 0)
         b = params.get("b", 0)
         return {
@@ -100,9 +100,11 @@ class SimpleMCPServer:
                 tool_params = params.get("parameters", {})
                 
                 if tool_name in self.tools:
-                    # In a real async environment we'd await this
-                    result = self.tools[tool_name]["handler"](tool_params)
-                    self.send_response(req_id, result)
+                    try:
+                        result = self.tools[tool_name]["handler"](tool_params)
+                        self.send_response(req_id, result)
+                    except Exception as e:
+                        self.send_error(req_id, -32000, f"Error executing tool: {str(e)}")
                 else:
                     self.send_error(req_id, -32601, f"Tool not found: {tool_name}")
             
