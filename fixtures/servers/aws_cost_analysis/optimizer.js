@@ -1,8 +1,8 @@
 /**
  * Cost Optimization Recommendation Generator
  * 
- * This module analyzes AWS resources and generates cost optimization
- * recommendations based on common best practices and usage patterns.
+ * This module analyzes AWS architecture resources and generates
+ * cost optimization recommendations based on best practices.
  */
 
 /**
@@ -14,213 +14,27 @@
 function generateRecommendations(analysisResults) {
   const recommendations = [];
   
-  // Extract resources and service costs for analysis
-  const { resources, serviceCosts, metrics } = analysisResults;
-  
-  // Check for idle or underutilized EC2 instances
-  if (resources.EC2Instance && resources.EC2Instance.length > 0) {
-    const ec2Resources = resources.EC2Instance;
-    
-    // Check for oversized instances
-    const oversizedInstances = ec2Resources.filter(resource => {
-      const instanceType = resource.Properties?.InstanceType;
-      // Consider larger instances potentially oversized (simplified logic)
-      return instanceType && (
-        instanceType.startsWith('m5.4xl') || 
-        instanceType.startsWith('c5.4xl') || 
-        instanceType.startsWith('r5.4xl') ||
-        instanceType.includes('8xl') ||
-        instanceType.includes('12xl') ||
-        instanceType.includes('16xl') ||
-        instanceType.includes('24xl') ||
-        instanceType.includes('metal')
-      );
-    });
-    
-    if (oversizedInstances.length > 0) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'EC2',
-        impact: 'HIGH',
-        title: 'Potential EC2 instance right-sizing opportunity',
-        description: `${oversizedInstances.length} EC2 instances may be oversized for their workload. Consider using AWS Compute Optimizer to right-size instances.`,
-        resources: oversizedInstances.map(r => r.LogicalId),
-        estimatedSavings: calculateRightSizingSavings(oversizedInstances),
-        implementation: 'Analyze instance utilization with CloudWatch metrics and AWS Compute Optimizer, then downsize instances that consistently show low CPU/memory usage.'
-      });
-    }
-    
-    // Check for opportunities to use Spot instances
-    if (ec2Resources.length >= 3) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'EC2',
-        impact: 'MEDIUM',
-        title: 'Evaluate using EC2 Spot Instances',
-        description: 'You have multiple EC2 instances which could potentially leverage Spot Instances for cost savings of up to 90%.',
-        resources: ec2Resources.map(r => r.LogicalId),
-        estimatedSavings: calculateSpotInstanceSavings(ec2Resources),
-        implementation: 'For non-critical or fault-tolerant workloads, configure Auto Scaling groups to use Spot Instances.'
-      });
-    }
-    
-    // Check for Reserved Instance opportunities
-    recommendations.push({
-      type: 'COST_OPTIMIZATION',
-      service: 'EC2',
-      impact: 'HIGH',
-      title: 'Consider purchasing Reserved Instances',
-      description: 'For predictable workloads, Reserved Instances can offer up to 72% cost savings compared to On-Demand pricing.',
-      resources: ec2Resources.map(r => r.LogicalId),
-      estimatedSavings: calculateReservedInstanceSavings(ec2Resources, serviceCosts),
-      implementation: 'Analyze your EC2 usage patterns and purchase 1 or 3-year Reserved Instances for stable workloads.'
-    });
+  if (!analysisResults || !analysisResults.resources) {
+    return recommendations;
   }
   
-  // Check for S3 optimization opportunities
-  if (resources.S3Bucket && resources.S3Bucket.length > 0) {
-    const s3Buckets = resources.S3Bucket;
-    
-    // Check for S3 lifecycle policies
-    const bucketsWithoutLifecycle = s3Buckets.filter(bucket => {
-      const lifecycleConfig = bucket.Properties?.LifecycleConfiguration;
-      return !lifecycleConfig || !lifecycleConfig.Rules || lifecycleConfig.Rules.length === 0;
-    });
-    
-    if (bucketsWithoutLifecycle.length > 0) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'S3',
-        impact: 'MEDIUM',
-        title: 'Implement S3 lifecycle policies',
-        description: `${bucketsWithoutLifecycle.length} S3 buckets don't have lifecycle policies configured. Implementing lifecycle policies can reduce storage costs.`,
-        resources: bucketsWithoutLifecycle.map(r => r.LogicalId),
-        estimatedSavings: calculateS3LifecycleSavings(bucketsWithoutLifecycle),
-        implementation: 'Add lifecycle rules to transition infrequently accessed objects to cheaper storage classes and expire old objects.'
-      });
-    }
-    
-    // Check for S3 Intelligent-Tiering opportunities
-    recommendations.push({
-      type: 'COST_OPTIMIZATION',
-      service: 'S3',
-      impact: 'LOW',
-      title: 'Consider using S3 Intelligent-Tiering',
-      description: 'S3 Intelligent-Tiering automatically moves objects between access tiers based on usage patterns, potentially reducing storage costs.',
-      resources: s3Buckets.map(r => r.LogicalId),
-      estimatedSavings: '5-15% of S3 storage costs',
-      implementation: 'Enable S3 Intelligent-Tiering storage class for objects with unknown or changing access patterns.'
-    });
-  }
+  // Analyze EC2 instances
+  analyzeEC2Instances(analysisResults, recommendations);
   
-  // Check for DynamoDB optimization opportunities
-  if (resources.DynamoDBTable && resources.DynamoDBTable.length > 0) {
-    const dynamoTables = resources.DynamoDBTable;
-    
-    // Check for on-demand vs provisioned capacity
-    const provisonedTables = dynamoTables.filter(table => {
-      const billingMode = table.Properties?.BillingMode;
-      return billingMode === 'PROVISIONED' || !billingMode;
-    });
-    
-    if (provisonedTables.length > 0) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'DynamoDB',
-        impact: 'MEDIUM',
-        title: 'Evaluate DynamoDB capacity mode',
-        description: 'Consider switching between on-demand and provisioned capacity based on your usage patterns.',
-        resources: provisonedTables.map(r => r.LogicalId),
-        estimatedSavings: 'Varies based on usage patterns',
-        implementation: 'For unpredictable workloads, use on-demand capacity. For predictable workloads with consistent usage, use provisioned capacity with auto-scaling.'
-      });
-    }
-    
-    // Check for DynamoDB Reserved Capacity opportunities
-    if (provisonedTables.length > 0) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'DynamoDB',
-        impact: 'MEDIUM',
-        title: 'Consider purchasing DynamoDB Reserved Capacity',
-        description: 'For tables with predictable usage patterns, Reserved Capacity can provide significant savings.',
-        resources: provisonedTables.map(r => r.LogicalId),
-        estimatedSavings: 'Up to 50% compared to standard provisioned capacity',
-        implementation: 'Analyze your DynamoDB usage patterns and purchase Reserved Capacity for stable workloads.'
-      });
-    }
-  }
+  // Analyze Lambda functions
+  analyzeLambdaFunctions(analysisResults, recommendations);
   
-  // Check for Lambda optimization opportunities
-  if (resources.LambdaFunction && resources.LambdaFunction.length > 0) {
-    const lambdaFunctions = resources.LambdaFunction;
-    
-    // Check for oversized Lambda memory allocation
-    const potentiallyOversizedLambdas = lambdaFunctions.filter(lambda => {
-      const memorySize = lambda.Properties?.MemorySize;
-      return memorySize && memorySize > 1024;
-    });
-    
-    if (potentiallyOversizedLambdas.length > 0) {
-      recommendations.push({
-        type: 'COST_OPTIMIZATION',
-        service: 'Lambda',
-        impact: 'LOW',
-        title: 'Optimize Lambda memory settings',
-        description: `${potentiallyOversizedLambdas.length} Lambda functions have high memory allocations. Right-sizing memory can reduce costs.`,
-        resources: potentiallyOversizedLambdas.map(r => r.LogicalId),
-        estimatedSavings: 'Up to 40% of Lambda costs for optimized functions',
-        implementation: 'Monitor Lambda execution metrics and adjust memory allocation based on actual usage requirements.'
-      });
-    }
-    
-    // Check for Lambda Provisioned Concurrency opportunities
-    const highConcurrencyFunctions = lambdaFunctions.filter(lambda => {
-      // Simple heuristic: functions with 3 seconds or higher timeout might be good candidates
-      const timeout = lambda.Properties?.Timeout;
-      return timeout && timeout >= 3;
-    });
-    
-    if (highConcurrencyFunctions.length > 0) {
-      recommendations.push({
-        type: 'PERFORMANCE_OPTIMIZATION',
-        service: 'Lambda',
-        impact: 'LOW',
-        title: 'Evaluate Lambda Provisioned Concurrency',
-        description: 'For latency-sensitive Lambda functions, provisioned concurrency can eliminate cold starts.',
-        resources: highConcurrencyFunctions.map(r => r.LogicalId),
-        estimatedSavings: 'May increase costs but improve performance',
-        implementation: 'Identify functions with strict latency requirements and configure provisioned concurrency.'
-      });
-    }
-  }
+  // Analyze S3 buckets
+  analyzeS3Buckets(analysisResults, recommendations);
   
-  // General architecture recommendations
-  recommendations.push({
-    type: 'ARCHITECTURE_OPTIMIZATION',
-    service: 'General',
-    impact: 'MEDIUM',
-    title: 'Implement auto-scaling for all compute resources',
-    description: 'Ensure all compute resources (EC2, ECS, etc.) have appropriate auto-scaling configured to match capacity with demand.',
-    resources: [],
-    estimatedSavings: '10-30% of compute costs',
-    implementation: 'Configure auto-scaling groups with appropriate metrics-based scaling policies.'
-  });
+  // Analyze DynamoDB tables
+  analyzeDynamoDBTables(analysisResults, recommendations);
   
-  // Check for AWS Graviton opportunities if using EC2 or containers
-  if ((resources.EC2Instance && resources.EC2Instance.length > 0) || 
-      (resources.ECSCluster && resources.ECSCluster.length > 0)) {
-    recommendations.push({
-      type: 'COST_OPTIMIZATION',
-      service: 'Compute',
-      impact: 'HIGH',
-      title: 'Consider AWS Graviton-based instances',
-      description: 'AWS Graviton processors provide up to 40% better price-performance compared to x86-based instances.',
-      resources: [],
-      estimatedSavings: 'Up to 20% of overall compute costs',
-      implementation: 'For supported workloads, transition to Graviton-based instance types for EC2, ECS, and other compute services.'
-    });
-  }
+  // Analyze RDS instances
+  analyzeRDSInstances(analysisResults, recommendations);
+  
+  // Analyze general architecture patterns
+  analyzeArchitecturePatterns(analysisResults, recommendations);
   
   return recommendations;
 }
@@ -234,142 +48,483 @@ function generateRecommendations(analysisResults) {
 function generateComparisonRecommendations(architectures) {
   const recommendations = [];
   
-  if (!architectures || architectures.length < 2) {
+  if (!architectures || !Array.isArray(architectures) || architectures.length < 2) {
     return recommendations;
   }
+
+  // Compare total costs
+  compareTotalCosts(architectures, recommendations);
   
-  // Sort architectures by total cost
-  const sortedArchitectures = [...architectures].sort((a, b) => a.totalCost - b.totalCost);
-  const cheapestArch = sortedArchitectures[0];
-  const mostExpensiveArch = sortedArchitectures[sortedArchitectures.length - 1];
+  // Compare service distribution
+  compareServiceDistribution(architectures, recommendations);
   
-  // Calculate cost difference
-  const costDifference = mostExpensiveArch.totalCost - cheapestArch.totalCost;
-  const costDifferencePercentage = (costDifference / mostExpensiveArch.totalCost) * 100;
+  // Compare resource efficiency
+  compareResourceEfficiency(architectures, recommendations);
   
-  if (costDifferencePercentage > 15) {
-    recommendations.push({
-      type: 'COMPARISON',
-      impact: 'HIGH',
-      title: `${cheapestArch.templateName} is significantly more cost-effective`,
-      description: `${cheapestArch.templateName} is approximately ${costDifferencePercentage.toFixed(1)}% cheaper than ${mostExpensiveArch.templateName}`,
-      services: ['Overall'],
-      estimatedSavings: `$${costDifference.toFixed(2)} per month`,
-      implementation: 'Consider adopting the more cost-effective architecture for production deployment.'
-    });
-  }
-  
-  // Compare service costs across architectures
-  const allServices = new Set();
-  architectures.forEach(arch => {
-    Object.keys(arch.serviceCosts || {}).forEach(service => allServices.add(service));
-  });
-  
-  allServices.forEach(service => {
-    // Find architectures with the lowest and highest cost for this service
-    let lowestCost = Infinity;
-    let highestCost = 0;
-    let lowestCostArch = null;
-    let highestCostArch = null;
-    
-    architectures.forEach(arch => {
-      const serviceCost = arch.serviceCosts?.[service] || 0;
-      if (serviceCost < lowestCost) {
-        lowestCost = serviceCost;
-        lowestCostArch = arch;
-      }
-      if (serviceCost > highestCost) {
-        highestCost = serviceCost;
-        highestCostArch = arch;
-      }
-    });
-    
-    if (lowestCostArch && highestCostArch && lowestCostArch !== highestCostArch) {
-      const serviceDifference = highestCost - lowestCost;
-      const serviceDifferencePercentage = (serviceDifference / highestCost) * 100;
-      
-      if (serviceDifferencePercentage > 20 && serviceDifference > 10) {
-        recommendations.push({
-          type: 'SERVICE_COMPARISON',
-          impact: 'MEDIUM',
-          title: `${service} costs less in ${lowestCostArch.templateName}`,
-          description: `${lowestCostArch.templateName} uses ${service} more cost-effectively than ${highestCostArch.templateName}`,
-          services: [service],
-          estimatedSavings: `$${serviceDifference.toFixed(2)} per month`,
-          implementation: `Analyze how ${service} is configured in ${lowestCostArch.templateName} and apply similar optimizations to other architectures.`
-        });
-      }
-    }
-  });
-  
-  // Compare different service choices (e.g., serverless vs. containers)
-  const serviceTypes = architectures.map(arch => {
-    const hasContainers = arch.resources?.ECSCluster || arch.resources?.EKSCluster;
-    const hasServerless = arch.resources?.LambdaFunction;
-    const hasEC2 = arch.resources?.EC2Instance;
-    
-    return {
-      name: arch.templateName,
-      hasContainers,
-      hasServerless,
-      hasEC2,
-      cost: arch.totalCost
-    };
-  });
-  
-  const containerArchs = serviceTypes.filter(a => a.hasContainers);
-  const serverlessArchs = serviceTypes.filter(a => a.hasServerless);
-  const ec2Archs = serviceTypes.filter(a => a.hasEC2);
-  
-  if (containerArchs.length > 0 && serverlessArchs.length > 0) {
-    const avgContainerCost = containerArchs.reduce((sum, a) => sum + a.cost, 0) / containerArchs.length;
-    const avgServerlessCost = serverlessArchs.reduce((sum, a) => sum + a.cost, 0) / serverlessArchs.length;
-    
-    if (Math.abs(avgContainerCost - avgServerlessCost) > 50) {
-      const cheaperOption = avgContainerCost < avgServerlessCost ? 'container-based' : 'serverless';
-      const expensiveOption = avgContainerCost < avgServerlessCost ? 'serverless' : 'container-based';
-      
-      recommendations.push({
-        type: 'ARCHITECTURE_COMPARISON',
-        impact: 'HIGH',
-        title: `${cheaperOption.charAt(0).toUpperCase() + cheaperOption.slice(1)} architectures are more cost-effective`,
-        description: `The ${cheaperOption} architectures are less expensive than ${expensiveOption} architectures for your workload profile.`,
-        services: ['Compute'],
-        estimatedSavings: `Approximately ${Math.abs(avgContainerCost - avgServerlessCost).toFixed(2)} per month`,
-        implementation: `Consider standardizing on ${cheaperOption} architectures when possible for this workload type.`
-      });
-    }
-  }
+  // Analyze architectural differences
+  analyzeArchitecturalDifferences(architectures, recommendations);
   
   return recommendations;
 }
 
-// Helper functions for calculating estimated savings
-
-function calculateRightSizingSavings(oversizedInstances) {
-  // Simplified calculation assuming 30% savings from right-sizing
-  const estimatedInstanceCost = oversizedInstances.length * 150; // Rough estimate of monthly cost for larger instances
-  return `Approximately $${(estimatedInstanceCost * 0.3).toFixed(2)} per month`;
+/**
+ * Analyze EC2 instances for cost optimization opportunities
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeEC2Instances(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  const ec2Instances = resources.filter(r => r.type === 'AWS::EC2::Instance');
+  
+  if (ec2Instances.length === 0) {
+    return;
+  }
+  
+  // Check for underutilized instances
+  const metrics = analysisResults.metrics || {};
+  const cpuUtilization = metrics.averageCpuUtilization || 0;
+  
+  if (cpuUtilization < 40 && ec2Instances.length > 0) {
+    recommendations.push({
+      title: "Consider rightsizing EC2 instances",
+      description: "Some EC2 instances appear to be underutilized based on CPU metrics. Consider using smaller instance types or implementing Auto Scaling.",
+      impact: "High",
+      resourceType: "EC2",
+      estimatedSavings: calculateRightsizingSavings(ec2Instances),
+      action: "Review EC2 instance sizes and utilization patterns"
+    });
+  }
+  
+  // Check for reserved instance opportunities
+  if (ec2Instances.length >= 2) {
+    recommendations.push({
+      title: "Consider Reserved Instances for stable workloads",
+      description: "You have multiple EC2 instances that could benefit from Reserved Instance pricing for consistent workloads.",
+      impact: "Medium",
+      resourceType: "EC2",
+      estimatedSavings: calculateReservedInstanceSavings(ec2Instances),
+      action: "Evaluate 1 or 3-year Reserved Instance commitments"
+    });
+  }
 }
 
-function calculateSpotInstanceSavings(ec2Resources) {
-  // Simplified calculation assuming 70% savings from Spot Instances
-  const estimatedInstanceCost = ec2Resources.length * 100; // Rough estimate of monthly cost
-  return `Up to $${(estimatedInstanceCost * 0.7).toFixed(2)} per month`;
+/**
+ * Analyze Lambda functions for cost optimization opportunities
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeLambdaFunctions(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  const lambdaFunctions = resources.filter(r => r.type === 'AWS::Lambda::Function');
+  
+  if (lambdaFunctions.length === 0) {
+    return;
+  }
+  
+  // Check for memory optimization
+  const highMemoryLambdas = lambdaFunctions.filter(lambda => {
+    const memory = lambda.properties?.MemorySize || 128;
+    return memory > 1024;
+  });
+  
+  if (highMemoryLambdas.length > 0) {
+    recommendations.push({
+      title: "Optimize Lambda function memory allocation",
+      description: `${highMemoryLambdas.length} Lambda functions have high memory settings. Consider tuning memory based on actual usage.`,
+      impact: "Medium",
+      resourceType: "Lambda",
+      estimatedSavings: calculateLambdaMemoryOptimizationSavings(highMemoryLambdas),
+      action: "Review CloudWatch metrics for each function and adjust memory settings"
+    });
+  }
+  
+  // Check for timeout settings
+  const highTimeoutLambdas = lambdaFunctions.filter(lambda => {
+    const timeout = lambda.properties?.Timeout || 3;
+    return timeout > 30;
+  });
+  
+  if (highTimeoutLambdas.length > 0) {
+    recommendations.push({
+      title: "Review Lambda function timeout settings",
+      description: "Some Lambda functions have high timeout settings which may indicate inefficient processing.",
+      impact: "Low",
+      resourceType: "Lambda",
+      action: "Profile Lambda execution times and optimize code"
+    });
+  }
 }
 
-function calculateReservedInstanceSavings(ec2Resources, serviceCosts) {
-  // Simplified calculation assuming 40% savings from Reserved Instances
-  const ec2Cost = serviceCosts?.EC2 || (ec2Resources.length * 100);
-  return `Approximately $${(ec2Cost * 0.4).toFixed(2)} per month`;
+/**
+ * Analyze S3 buckets for cost optimization opportunities
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeS3Buckets(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  const s3Buckets = resources.filter(r => r.type === 'AWS::S3::Bucket');
+  
+  if (s3Buckets.length === 0) {
+    return;
+  }
+  
+  // Check for lifecycle policies
+  const bucketsWithoutLifecycle = s3Buckets.filter(bucket => 
+    !bucket.properties?.LifecycleConfiguration);
+  
+  if (bucketsWithoutLifecycle.length > 0) {
+    recommendations.push({
+      title: "Implement S3 lifecycle policies",
+      description: `${bucketsWithoutLifecycle.length} S3 buckets do not have lifecycle policies configured. Consider adding policies to transition infrequently accessed objects to cheaper storage classes.`,
+      impact: "Medium",
+      resourceType: "S3",
+      estimatedSavings: calculateS3LifecycleSavings(s3Buckets),
+      action: "Configure lifecycle policies to move data to Infrequent Access or Glacier storage classes"
+    });
+  }
 }
 
-function calculateS3LifecycleSavings(buckets) {
-  // Simplified calculation assuming 15% savings from lifecycle policies
-  return `Approximately 15% of S3 storage costs`;
+/**
+ * Analyze DynamoDB tables for cost optimization opportunities
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeDynamoDBTables(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  const dynamodbTables = resources.filter(r => r.type === 'AWS::DynamoDB::Table');
+  
+  if (dynamodbTables.length === 0) {
+    return;
+  }
+  
+  // Check for provisioned capacity mode
+  const provisionedTables = dynamodbTables.filter(table => 
+    table.properties?.BillingMode === 'PROVISIONED' || !table.properties?.BillingMode);
+  
+  if (provisionedTables.length > 0) {
+    recommendations.push({
+      title: "Consider DynamoDB On-Demand capacity mode",
+      description: "For unpredictable workloads, DynamoDB On-Demand capacity mode can be more cost-effective than Provisioned capacity.",
+      impact: "Medium",
+      resourceType: "DynamoDB",
+      action: "Evaluate usage patterns and consider switching tables to On-Demand mode"
+    });
+  }
 }
 
-module.exports = {
+/**
+ * Analyze RDS instances for cost optimization opportunities
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeRDSInstances(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  const rdsInstances = resources.filter(r => r.type === 'AWS::RDS::DBInstance');
+  
+  if (rdsInstances.length === 0) {
+    return;
+  }
+  
+  // Check for Multi-AZ deployments
+  const multiAZInstances = rdsInstances.filter(rds => 
+    rds.properties?.MultiAZ === true);
+  
+  if (multiAZInstances.length > 0 && analysisResults.totalCost < 200) {
+    recommendations.push({
+      title: "Evaluate necessity of Multi-AZ RDS deployments",
+      description: "For non-production environments, consider using Single-AZ RDS deployments to reduce costs.",
+      impact: "Medium",
+      resourceType: "RDS",
+      estimatedSavings: calculateMultiAZSavings(multiAZInstances),
+      action: "Evaluate high availability requirements and consider Single-AZ for non-critical environments"
+    });
+  }
+}
+
+/**
+ * Analyze general architecture patterns for optimization
+ * 
+ * @param {Object} analysisResults - The analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeArchitecturePatterns(analysisResults, recommendations) {
+  const resources = analysisResults.resources || [];
+  
+  // Check for serverless opportunities
+  const ec2Count = resources.filter(r => r.type === 'AWS::EC2::Instance').length;
+  const ecsCount = resources.filter(r => r.type.startsWith('AWS::ECS::')).length;
+  const lambdaCount = resources.filter(r => r.type === 'AWS::Lambda::Function').length;
+  
+  if (ec2Count > 0 && lambdaCount === 0) {
+    recommendations.push({
+      title: "Consider serverless architecture components",
+      description: "Your architecture relies heavily on EC2 instances. Consider evaluating serverless options like Lambda for suitable workloads.",
+      impact: "High",
+      resourceType: "Architecture",
+      action: "Identify suitable workloads for serverless migration"
+    });
+  }
+  
+  // Check for caching opportunities
+  const apiGatewayCount = resources.filter(r => r.type.startsWith('AWS::ApiGateway::')).length;
+  const cloudfrontCount = resources.filter(r => r.type === 'AWS::CloudFront::Distribution').length;
+  const elasticacheCount = resources.filter(r => r.type.startsWith('AWS::ElastiCache::')).length;
+  
+  if (apiGatewayCount > 0 && cloudfrontCount === 0 && elasticacheCount === 0) {
+    recommendations.push({
+      title: "Implement caching solutions",
+      description: "Consider adding CloudFront or ElastiCache to reduce direct API calls and improve performance/cost efficiency.",
+      impact: "Medium",
+      resourceType: "Architecture",
+      action: "Evaluate CloudFront for API caching or ElastiCache for application-level caching"
+    });
+  }
+}
+
+/**
+ * Compare total costs between architectures
+ * 
+ * @param {Array} architectures - List of architecture analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function compareTotalCosts(architectures, recommendations) {
+  // Sort architectures by total cost
+  const sortedArchitectures = [...architectures].sort((a, b) => 
+    a.totalCost - b.totalCost);
+  
+  const cheapest = sortedArchitectures[0];
+  const mostExpensive = sortedArchitectures[sortedArchitectures.length - 1];
+  const costDifference = mostExpensive.totalCost - cheapest.totalCost;
+  
+  if (costDifference > 100) {
+    const savingsPercentage = ((costDifference / mostExpensive.totalCost) * 100).toFixed(1);
+    
+    recommendations.push({
+      title: `${cheapest.templateName} is more cost-effective`,
+      description: `The ${cheapest.templateName} architecture is ${savingsPercentage}% cheaper than ${mostExpensive.templateName}. Consider adopting similar patterns where applicable.`,
+      impact: "High",
+      resourceType: "Architecture",
+      estimatedSavings: costDifference,
+      action: "Review key architectural differences and cost drivers"
+    });
+  }
+}
+
+/**
+ * Compare service distribution between architectures
+ * 
+ * @param {Array} architectures - List of architecture analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function compareServiceDistribution(architectures, recommendations) {
+  // Look for architectures with significantly different service distributions
+  for (let i = 0; i < architectures.length; i++) {
+    const arch1 = architectures[i];
+    
+    for (let j = i + 1; j < architectures.length; j++) {
+      const arch2 = architectures[j];
+      
+      // Compare service costs
+      const arch1Services = arch1.serviceCosts || {};
+      const arch2Services = arch2.serviceCosts || {};
+      
+      // Find services that are much cheaper in one architecture
+      Object.keys(arch1Services).forEach(service => {
+        if (arch2Services[service] && arch1Services[service] > 0) {
+          const costRatio = arch2Services[service] / arch1Services[service];
+          
+          if (costRatio < 0.5 && (arch1Services[service] - arch2Services[service]) > 20) {
+            recommendations.push({
+              title: `${service} usage is more efficient in ${arch2.templateName}`,
+              description: `${service} costs are significantly lower in the ${arch2.templateName} architecture. Consider examining its implementation approach.`,
+              impact: "Medium",
+              resourceType: service,
+              action: `Review ${service} configuration in both architectures`
+            });
+          }
+        }
+      });
+    }
+  }
+}
+
+/**
+ * Compare resource efficiency between architectures
+ * 
+ * @param {Array} architectures - List of architecture analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function compareResourceEfficiency(architectures, recommendations) {
+  // Calculate cost per resource for each architecture
+  const efficiencyMetrics = architectures.map(arch => {
+    const resourceCount = (arch.resources || []).length;
+    return {
+      name: arch.templateName,
+      costPerResource: resourceCount > 0 ? arch.totalCost / resourceCount : 0
+    };
+  });
+  
+  // Sort by efficiency
+  efficiencyMetrics.sort((a, b) => a.costPerResource - b.costPerResource);
+  
+  // If there's a significant difference in efficiency
+  if (efficiencyMetrics.length >= 2) {
+    const mostEfficient = efficiencyMetrics[0];
+    const leastEfficient = efficiencyMetrics[efficiencyMetrics.length - 1];
+    
+    if (leastEfficient.costPerResource > mostEfficient.costPerResource * 1.5) {
+      recommendations.push({
+        title: `${mostEfficient.name} has better resource efficiency`,
+        description: `The ${mostEfficient.name} architecture has better cost-to-resource ratio than ${leastEfficient.name}. This may indicate more efficient resource utilization.`,
+        impact: "Medium",
+        resourceType: "Architecture",
+        action: "Review resource utilization patterns across architectures"
+      });
+    }
+  }
+}
+
+/**
+ * Analyze architectural differences between solutions
+ * 
+ * @param {Array} architectures - List of architecture analysis results
+ * @param {Array} recommendations - The recommendations array to append to
+ */
+function analyzeArchitecturalDifferences(architectures, recommendations) {
+  // Check for architectural pattern differences
+  const hasServerless = architectures.some(arch => 
+    arch.templateName.toLowerCase().includes('serverless') ||
+    (arch.resources || []).some(r => r.type === 'AWS::Lambda::Function')
+  );
+  
+  const hasContainers = architectures.some(arch => 
+    arch.templateName.toLowerCase().includes('container') ||
+    (arch.resources || []).some(r => r.type.startsWith('AWS::ECS::') || r.type.startsWith('AWS::EKS::'))
+  );
+  
+  const hasEC2 = architectures.some(arch => 
+    arch.templateName.toLowerCase().includes('ec2') ||
+    (arch.resources || []).some(r => r.type === 'AWS::EC2::Instance')
+  );
+  
+  // If we have multiple paradigms, make recommendations
+  if ([hasServerless, hasContainers, hasEC2].filter(Boolean).length > 1) {
+    let lowestCostArchitecture = architectures.reduce((prev, current) => 
+      (prev.totalCost < current.totalCost) ? prev : current
+    );
+    
+    let architectureType = "";
+    if (lowestCostArchitecture.templateName.toLowerCase().includes('serverless') ||
+        (lowestCostArchitecture.resources || []).some(r => r.type === 'AWS::Lambda::Function')) {
+      architectureType = "serverless";
+    } else if (lowestCostArchitecture.templateName.toLowerCase().includes('container') ||
+              (lowestCostArchitecture.resources || []).some(r => r.type.startsWith('AWS::ECS::') || r.type.startsWith('AWS::EKS::'))) {
+      architectureType = "container-based";
+    } else {
+      architectureType = "EC2-based";
+    }
+    
+    recommendations.push({
+      title: `Consider hybrid or complete ${architectureType} architecture`,
+      description: `The ${architectureType} architecture (${lowestCostArchitecture.templateName}) has the lowest overall cost. Consider evaluating which workloads would benefit from this approach.`,
+      impact: "High",
+      resourceType: "Architecture",
+      action: `Evaluate workloads for potential migration to a ${architectureType} approach`
+    });
+  }
+}
+
+/**
+ * Calculate estimated savings from EC2 rightsizing
+ * 
+ * @param {Array} ec2Instances - List of EC2 instance resources
+ * @returns {number} Estimated monthly savings
+ */
+function calculateRightsizingSavings(ec2Instances) {
+  // Simple estimation: assume 30% savings from rightsizing
+  let totalEC2Cost = 0;
+  
+  ec2Instances.forEach(instance => {
+    totalEC2Cost += instance.estimatedCost || 0;
+  });
+  
+  return totalEC2Cost * 0.3;
+}
+
+/**
+ * Calculate estimated savings from Reserved Instances
+ * 
+ * @param {Array} ec2Instances - List of EC2 instance resources
+ * @returns {number} Estimated monthly savings
+ */
+function calculateReservedInstanceSavings(ec2Instances) {
+  // Simple estimation: assume 40% savings from Reserved Instances
+  let totalEC2Cost = 0;
+  
+  ec2Instances.forEach(instance => {
+    totalEC2Cost += instance.estimatedCost || 0;
+  });
+  
+  return totalEC2Cost * 0.4;
+}
+
+/**
+ * Calculate estimated savings from Lambda memory optimization
+ * 
+ * @param {Array} lambdaFunctions - List of Lambda function resources
+ * @returns {number} Estimated monthly savings
+ */
+function calculateLambdaMemoryOptimizationSavings(lambdaFunctions) {
+  // Simple estimation: assume 20% savings from memory optimization
+  let totalLambdaCost = 0;
+  
+  lambdaFunctions.forEach(lambda => {
+    totalLambdaCost += lambda.estimatedCost || 0;
+  });
+  
+  return totalLambdaCost * 0.2;
+}
+
+/**
+ * Calculate estimated savings from S3 lifecycle policies
+ * 
+ * @param {Array} s3Buckets - List of S3 bucket resources
+ * @returns {number} Estimated monthly savings
+ */
+function calculateS3LifecycleSavings(s3Buckets) {
+  // Simple estimation: assume 30% savings from lifecycle policies
+  let totalS3Cost = 0;
+  
+  s3Buckets.forEach(bucket => {
+    totalS3Cost += bucket.estimatedCost || 0;
+  });
+  
+  return totalS3Cost * 0.3;
+}
+
+/**
+ * Calculate estimated savings from switching Multi-AZ RDS to Single-AZ
+ * 
+ * @param {Array} rdsInstances - List of RDS instance resources
+ * @returns {number} Estimated monthly savings
+ */
+function calculateMultiAZSavings(rdsInstances) {
+  // Multi-AZ typically costs about 2x Single-AZ, so savings would be ~50%
+  let totalRDSCost = 0;
+  
+  rdsInstances.forEach(rds => {
+    totalRDSCost += rds.estimatedCost || 0;
+  });
+  
+  return totalRDSCost * 0.5;
+}
+
+export {
   generateRecommendations,
   generateComparisonRecommendations
 }; 

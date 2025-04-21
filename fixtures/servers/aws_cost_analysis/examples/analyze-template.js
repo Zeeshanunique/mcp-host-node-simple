@@ -115,3 +115,4 @@ function compareStacks(stack1Results, stack2Results) {
 main().catch(error => {
   console.error('Unhandled error:', error);
   process.exit(1); 
+}); 
