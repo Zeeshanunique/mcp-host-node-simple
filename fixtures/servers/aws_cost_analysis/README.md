@@ -3,14 +3,17 @@
 This tool analyzes and compares the costs between different AWS architecture approaches, specifically:
 - EC2-based architectures
 - Container-based architectures
+- Serverless architectures
 
 ## Files
 
 - `cdk_analyzer.js` - Core analyzer that processes CloudFormation/CDK templates and estimates costs
 - `compare_architectures.js` - Script that compares EC2-based and container-based architectures
+- `index.js` - MCP server entry point for integration with Model Context Protocol
 - `templates/` - Directory containing sample CloudFormation templates
   - `ec2_template.json` - Template for EC2-based microservice architecture
   - `container_template.json` - Template for container-based microservice architecture
+  - `serverless_template.json` - Template for serverless architecture
 
 ## How to Run
 
@@ -26,7 +29,7 @@ This tool analyzes and compares the costs between different AWS architecture app
 npm install
 ```
 
-### Running the Comparison Analysis
+### Running the Comparison Analysis (CLI)
 
 On Windows:
 ```
@@ -38,6 +41,53 @@ On Linux/MacOS:
 node fixtures/servers/aws_cost_analysis/compare_architectures.js
 # Or using the executable directly
 ./fixtures/servers/aws_cost_analysis/compare_architectures.js
+```
+
+### Using as an MCP Server
+
+This tool is also available as an MCP (Model Context Protocol) server, which allows you to access its functionality through the MCP API.
+
+#### Starting the Server
+
+The server is automatically registered in the main application's `mcp-servers.json` file and will be started when the main application is run. Alternatively, you can start it directly:
+
+```bash
+node fixtures/servers/aws_cost_analysis/index.js
+```
+
+#### Available MCP Actions
+
+The AWS Cost Analysis MCP server provides the following actions:
+
+1. **analyze_template**
+   - Analyzes a single CloudFormation/CDK template and provides cost estimates
+   - Parameters:
+     - `template`: The template to analyze ("ec2_template", "container_template", or "serverless_template")
+     - `region` (optional): AWS region for pricing (default: us-east-1)
+     - `duration` (optional): Analysis duration in days (default: 30)
+
+2. **compare_architectures**
+   - Compares costs between different architecture templates
+   - Parameters:
+     - `architectures`: Array of templates to compare (e.g., ["ec2_template", "container_template"])
+     - `region` (optional): AWS region for pricing (default: us-east-1)
+     - `duration` (optional): Analysis duration in days (default: 30)
+
+#### Example Usage
+
+```javascript
+// Example MCP client code
+const result = await mcpClient.call('aws_cost_analysis', 'analyze_template', {
+  template: 'ec2_template',
+  region: 'us-west-2',
+  duration: 60
+});
+
+// Compare architectures
+const comparison = await mcpClient.call('aws_cost_analysis', 'compare_architectures', {
+  architectures: ['ec2_template', 'container_template', 'serverless_template'],
+  region: 'us-east-1'
+});
 ```
 
 ### Sample Output
