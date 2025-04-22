@@ -1,10 +1,9 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
 from pythonjsonlogger import jsonlogger
 import sys
 from config import Settings
+from fastmcp import FastMCP
 
 # Load settings
 settings = Settings()
@@ -17,66 +16,53 @@ logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 logger.setLevel(settings.LOG_LEVEL)
 
-app = FastAPI(
-    title="FastMCP Test Server",
-    description="A test server for FastMCP functionality",
-    version=settings.API_VERSION,
-    debug=settings.DEBUG,
-    docs_url=f"{settings.API_PREFIX}/docs",
-    openapi_url=f"{settings.API_PREFIX}/openapi.json"
-)
+# Initialize FastMCP server
+mcp = FastMCP("fastmcp-test")
 
-class TestRequest(BaseModel):
+class TestRequest:
     test_id: str
     parameters: Dict[str, Any]
     expected_result: Optional[Any] = None
 
-class TestResponse(BaseModel):
-    test_id: str
-    result: Any
-    success: bool
-    message: Optional[str] = None
-
-@app.get("/")
-async def root():
-    return {"message": "FastMCP Test Server is running"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-@app.post("/test", response_model=TestResponse)
-async def run_test(request: TestRequest):
+@mcp.tool()
+async def run_test(test_id: str, parameters: Dict[str, Any], expected_result: Optional[Any] = None) -> Dict[str, Any]:
+    """Run a test with the given parameters and compare with expected result.
+    
+    Args:
+        test_id: Unique identifier for the test
+        parameters: Dictionary of test parameters
+        expected_result: Optional expected result to compare against
+    """
     try:
-        logger.info(f"Running test {request.test_id}", extra={
-            "test_id": request.test_id,
-            "parameters": request.parameters
+        logger.info(f"Running test {test_id}", extra={
+            "test_id": test_id,
+            "parameters": parameters
         })
         
         # Implement test logic here
         # For now, just echo back the parameters
-        result = request.parameters
+        result = parameters
         success = True
         message = "Test completed successfully"
         
-        return TestResponse(
-            test_id=request.test_id,
-            result=result,
-            success=success,
-            message=message
-        )
+        return {
+            "test_id": test_id,
+            "result": result,
+            "success": success,
+            "message": message
+        }
     except Exception as e:
-        logger.error(f"Test {request.test_id} failed", extra={
-            "test_id": request.test_id,
+        logger.error(f"Test {test_id} failed", extra={
+            "test_id": test_id,
             "error": str(e)
         })
-        raise HTTPException(status_code=500, detail=str(e))
+        raise
+
+@mcp.tool()
+async def health_check() -> Dict[str, str]:
+    """Check the health status of the server."""
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        app, 
-        host=settings.HOST, 
-        port=settings.PORT,
-        log_level=settings.LOG_LEVEL.lower()
-    ) 
+    # Initialize and run the server with stdio transport
+    mcp.run(transport='stdio') 
