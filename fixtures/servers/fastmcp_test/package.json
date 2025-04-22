@@ -1,0 +1,14 @@
+{
+  "name": "fastmcp-test",
+  "version": "1.0.0",
+  "description": "FastMCP Test Server for MCP functionality validation",
+  "private": true,
+  "scripts": {
+    "start": "python main.py"
+  },
+  "dependencies": {
+    "fastmcp": "^0.1.0",
+    "python-json-logger": "^2.0.0",
+    "pydantic": "^1.8.0"
+  }
+} 
