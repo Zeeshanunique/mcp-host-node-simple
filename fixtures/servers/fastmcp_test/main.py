@@ -15,11 +15,15 @@ logHandler = logging.StreamHandler(sys.stdout)
 formatter = jsonlogger.JsonFormatter() if settings.JSON_LOGS else logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
-logger.setLevel(settings.LOG_LEVEL.upper())  # Convert to uppercase for compatibility
+
+# Convert log level to uppercase for compatibility
+log_level = settings.LOG_LEVEL.upper()
+logger.setLevel(log_level)
 
 # Initialize FastMCP server with detailed instructions
 mcp = FastMCP(
     name="fastmcp-test",
+    log_level=log_level,  # Pass the converted log level
     instructions="""
     # FastMCP Test Server
 
