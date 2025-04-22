@@ -1,4 +1,4 @@
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     MAX_TEST_DURATION: int = 300  # Maximum test duration in seconds
     MAX_CONCURRENT_TESTS: int = 10
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-settings = Settings() 
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "extra": "ignore"  # Allow extra fields from environment
+    } 
