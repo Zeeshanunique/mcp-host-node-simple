@@ -1,0 +1,4 @@
+fastmcp>=0.1.0
+pydantic>=1.8.0
+pydantic-settings>=2.0.0
+python-json-logger>=2.0.0 
