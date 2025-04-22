@@ -17,16 +17,16 @@ An MCP server implementation for calculating age based on birthdate. This server
    pip install -r requirements.txt
    ```
 
-3. Install UVX directly:
+3. Install UV directly:
    ```
-   pip install uvx==1.0.0
+   pip install uv
    ```
 
 ## Running the Server
 
-### With UVX (Recommended)
+### With UV (Recommended)
 ```
-uvx main.py
+uv run main.py
 ```
 
 ### With Python (Fallback)
@@ -81,4 +81,4 @@ Response:
 
 ## Integration with MCP Host
 
-This server is configured in `mcp-servers.json` to run with UVX. When the main MCP host application starts, it will automatically start this server and make its tools available. 
+This server is configured in `mcp-servers.json` to run with UV. When the main MCP host application starts, it will automatically start this server and make its tools available. 
