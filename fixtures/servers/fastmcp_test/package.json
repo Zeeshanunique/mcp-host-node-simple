@@ -4,7 +4,7 @@
   "description": "FastMCP Test Server for MCP functionality validation",
   "private": true,
   "scripts": {
-    "start": "python main.py"
+    "start": "uvx main.py"
   },
   "dependencies": {
     "fastmcp": "^0.1.0",
