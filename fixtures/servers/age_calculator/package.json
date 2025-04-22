@@ -4,7 +4,7 @@
   "description": "Age Calculator MCP Server for calculating age from birthdate",
   "private": true,
   "scripts": {
-    "start": "python main.py"
+    "start": "uvx main.py"
   },
   "dependencies": {
     "fastmcp": "^0.1.0",
