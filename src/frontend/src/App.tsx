@@ -12,11 +12,13 @@ import { ShortcutsHelpDialog } from './components/shortcuts-help-dialog';
 import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2 } from 'lucide-react';
+import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle } from 'lucide-react';
 
 interface ToolResult {
   name: string;
   result: string;
+  sequence?: number;    // Position in the sequence
+  totalSteps?: number;  // Total number of steps
 }
 
 interface ChatResponse {
@@ -115,7 +117,20 @@ function App() {
         throw new Error('Failed to fetch tools');
       }
       const data: ToolsResponse = await response.json();
-      setTools(data.tools);
+      
+      // Use only the tools returned by the MCP host
+      setTools(data.tools || []);
+      
+      console.log("Loaded tools from MCP host:", data.tools);
+      
+      // Reset selected tool if it's no longer available
+      if (selectedTool && !data.tools.includes(selectedTool)) {
+        setSelectedTool(null);
+        toast({
+          title: "Tool unavailable",
+          description: "The previously selected tool is no longer available."
+        });
+      }
     } catch (error) {
       console.error('Error fetching tools:', error);
       setError('Failed to fetch available tools. Please try again later.');
@@ -327,36 +342,57 @@ function App() {
                     )}
                     
                     {chatResponse && chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
-                      <div className="flex justify-start my-2">
-                        <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border">
-                          <CollapsibleTrigger asChild>
-                            <Button variant="ghost" className="flex w-full justify-between p-4 rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <Cpu className="h-4 w-4 text-primary" />
-                                <span className="text-sm font-medium">
-                                  Tool Results ({chatResponse.toolResults.length})
-                                </span>
-                              </div>
-                              <ChevronsDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="px-4 pb-4">
-                            <div className="space-y-2">
-                              {chatResponse.toolResults.map((tool, index) => (
-                                <div key={index} className="rounded-md bg-muted p-3">
-                                  <div className="flex items-center gap-2 font-medium text-sm mb-1 text-muted-foreground">
-                                    <Code className="h-4 w-4" />
-                                    {tool.name}
-                                  </div>
-                                  <div className="whitespace-pre-wrap font-mono text-xs bg-background/50 p-2 rounded-sm overflow-x-auto">
-                                    {tool.result}
-                                  </div>
-                                </div>
-                              ))}
+                      <>
+                        <div className="flex items-center justify-center w-full px-4 py-2">
+                          <div className="w-full flex items-center">
+                            <div className="h-1 bg-primary/30 rounded-full flex-grow" />
+                            <div className="mx-2 text-xs text-muted-foreground flex items-center">
+                              <Info className="h-3 w-3 mr-1" />
+                              Tool Execution Flow ({chatResponse.toolResults.length} step{chatResponse.toolResults.length > 1 ? 's' : ''})
                             </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      </div>
+                            <div className="h-1 bg-primary/30 rounded-full flex-grow" />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-start my-2">
+                          <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={true}>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" className="flex w-full justify-between p-4 rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <Cpu className="h-4 w-4 text-primary" />
+                                  <span className="text-sm font-medium">
+                                    Tool Results ({chatResponse.toolResults.length})
+                                  </span>
+                                </div>
+                                <ChevronsDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="px-4 pb-4">
+                              <div className="space-y-4">
+                                {chatResponse.toolResults.map((tool, index) => (
+                                  <div key={index} className="rounded-md bg-muted p-3 border-l-2 border-primary/50">
+                                    <div className="flex items-center justify-between font-medium text-sm mb-2 text-muted-foreground">
+                                      <div className="flex items-center gap-2">
+                                        <Code className="h-4 w-4" />
+                                        <span className="font-semibold">{tool.name}</span>
+                                      </div>
+                                      {/* Show sequence information if available */}
+                                      {tool.sequence && tool.totalSteps && (
+                                        <Badge variant="outline" className="ml-auto">
+                                          Step {tool.sequence} of {tool.totalSteps}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="whitespace-pre-wrap font-mono text-xs bg-background/50 p-2 rounded-sm overflow-x-auto">
+                                      {tool.result}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        </div>
+                      </>
                     )}
                     
                     {isLoading && (
@@ -371,6 +407,21 @@ function App() {
                                 : "Thinking..."}
                             </p>
                           </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Add final response with visual indicator if available */}
+                    {chatResponse && chatResponse.finalResponse && chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
+                      <div className="flex justify-start w-full">
+                        <div className="rounded-lg p-3 bg-primary/10 w-full max-w-[80%] border-l-4 border-primary">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <CheckCircle className="h-4 w-4 text-primary" />
+                              <span>Final Summary</span>
+                            </div>
+                            <Badge variant="outline" className="text-xs">Synthesized from {chatResponse.toolResults.length} tool{chatResponse.toolResults.length > 1 ? 's' : ''}</Badge>
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm">{chatResponse.finalResponse}</p>
                         </div>
                       </div>
                     )}

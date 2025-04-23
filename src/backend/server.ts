@@ -107,76 +107,136 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
       initialMessages: history 
     });
     
-    // Generate initial response with tools
-    const initialGenerationResult = await llm.generate({ tools });
-    
-    const toolResponseText = initialGenerationResult.text;
-    const toolResults = initialGenerationResult.toolResults;
-    const assistantMessage = initialGenerationResult.response.messages.find(m => m.role === 'assistant');
-
-    logger.debug({ 
+    // Load MCP tools directly from the host
+    const mcpTools = await host.tools();
+    logger.info({ 
       reqId: (req as any).reqId,
-      hasToolResults: !!toolResults?.length,
-      toolsUsed: toolResults?.map((tr: any) => tr.toolName || 'unknown')
-    }, 'Initial generation complete');
-
-    let finalAssistantResponseText: string | null = null;
-
-    // If tools were used, process them and generate a final response
-    if (toolResults && toolResults.length > 0) {
-        // Append the assistant message with tool calls
-        if (assistantMessage) {
-          llm.append('assistant', assistantMessage.content);
-        } else {
-          logger.warn({ reqId: (req as any).reqId }, 'Could not find assistant message with tool calls');
-          if (toolResponseText) {
-            llm.append('assistant', toolResponseText);
+      toolCount: Object.keys(mcpTools).length,
+      toolList: await host.toolList()
+    }, 'Loaded MCP tools for request');
+    
+    // ========== MULTI-STEP EXECUTION LOOP ==========
+    let toolResponseText = '';
+    let allToolResults: any[] = [];
+    let continueToolExecution = true;
+    let loopCount = 0;
+    const MAX_ITERATIONS = 5; // Prevent infinite loops
+    
+    while (continueToolExecution && loopCount < MAX_ITERATIONS) {
+      loopCount++;
+      logger.info({ reqId: (req as any).reqId, iteration: loopCount }, 'Starting tool execution iteration');
+      
+      // Generate response with tools to let the LLM decide what tools to use next
+      const generationResult = await llm.generate({ tools: mcpTools });
+      
+      // Capture the assistant's thinking/reasoning
+      const assistantMessage = generationResult.response.messages.find(m => m.role === 'assistant');
+      if (assistantMessage) {
+        if (loopCount === 1) {
+          // Store initial response only the first time
+          toolResponseText = generationResult.text;
+        }
+        
+        // Always add the assistant reasoning to conversation history
+        llm.append('assistant', assistantMessage.content);
+        logger.debug({ 
+          reqId: (req as any).reqId, 
+          messageLength: typeof generationResult.text === 'string' ? generationResult.text.length : 0
+        }, 'Added assistant reasoning to conversation');
+      }
+      
+      // Check if any tools were identified for execution
+      const currentToolResults = generationResult.toolResults || [];
+      
+      if (currentToolResults.length === 0) {
+        // No more tools to execute, exit the loop
+        logger.info({ reqId: (req as any).reqId }, 'No more tools to execute, ending loop');
+        continueToolExecution = false;
+        continue;
+      }
+      
+      logger.info({ 
+        reqId: (req as any).reqId, 
+        toolCount: currentToolResults.length,
+        toolNames: currentToolResults.map((tr: any) => tr.toolName || 'unknown')
+      }, 'Tools identified for execution');
+      
+      // Process tool results and add to conversation history
+      for (let i = 0; i < currentToolResults.length; i++) {
+        const toolResult = currentToolResults[i];
+        const toolCallId = (toolResult as any).toolCallId || `tool_${Date.now()}_${loopCount}_${i}`;
+        const toolName = (toolResult as any).toolName || 'unknown';
+        const toolResultContent = (toolResult as any).result?.content;
+        const resultText = Array.isArray(toolResultContent) && toolResultContent[0]?.text
+                         ? toolResultContent[0].text
+                         : JSON.stringify((toolResult as any).result);
+        
+        // Add global sequence numbers across all loop iterations
+        const sequenceNum = allToolResults.length + 1;
+        
+        // Add tool result to conversation context
+        llm.append('tool', {
+          type: 'tool-result',
+          toolCallId: toolCallId,
+          toolName: toolName,
+          result: resultText
+        });
+        
+        // Add to our master list of tools with proper type casting
+        allToolResults.push({
+          toolName,
+          toolCallId,
+          sequence: sequenceNum,
+          result: {
+            content: Array.isArray(toolResultContent) ? toolResultContent : [{ text: resultText }]
           }
-        }
+        });
         
-        // Add tool results to messages
-        for (const toolResult of toolResults) {
-          const toolCallId = (toolResult as any).toolCallId || `tool_${Date.now()}`;
-          const toolResultContent = (toolResult as any).result?.content;
-          const resultText = Array.isArray(toolResultContent) && toolResultContent[0]?.text
-                             ? toolResultContent[0].text
-                             : JSON.stringify((toolResult as any).result);
-          
-          llm.append('tool', {
-            type: 'tool-result',
-            toolCallId: toolCallId,
-            toolName: (toolResult as any).toolName || 'unknown',
-            result: resultText
-          });
-          
-          logger.debug({ 
-            reqId: (req as any).reqId, 
-            toolName: (toolResult as any).toolName || 'unknown',
-            toolCallId
-          }, 'Added tool result');
-        }
-        
-        // Generate the final response after adding tool results
-        logger.debug({ reqId: (req as any).reqId }, 'Generating final response after tools');
-        const finalGenerationResult = await llm.generate();
-        finalAssistantResponseText = finalGenerationResult.text;
+        logger.debug({ 
+          reqId: (req as any).reqId, 
+          toolName,
+          toolCallId,
+          sequence: sequenceNum,
+          totalSoFar: allToolResults.length
+        }, 'Added tool result to conversation');
+      }
+      
+      // If no more tools are needed, break the loop
+      if (currentToolResults.length === 0) {
+        continueToolExecution = false;
+      }
     }
     
-    // Prepare and return the response payload
+    // Generate the final response after all tools have been executed
+    logger.debug({ reqId: (req as any).reqId }, 'Generating final response after all tools');
+    const finalGenerationResult = await llm.generate();
+    const finalAssistantResponseText = finalGenerationResult.text;
+    
+    // Prepare and return the response payload with all accumulated tool results
     const response = { 
       initialResponse: toolResponseText,
-      toolResults: (toolResults || []).map((tr: any) => { 
+      toolResults: allToolResults.map((tr: any) => { 
         const toolName = tr.toolName || 'unknown';
-        const resultText = tr.result?.content?.[0]?.text ?? JSON.stringify(tr.result); 
+        const resultContent = tr.result?.content;
+        const resultText = Array.isArray(resultContent) && resultContent[0]?.text
+                         ? resultContent[0].text
+                         : JSON.stringify(tr.result); 
         return {
           name: toolName,
-          result: resultText
+          result: resultText,
+          sequence: tr.sequence,
+          totalSteps: allToolResults.length
         };
       }),
-      finalResponse: finalAssistantResponseText ?? (toolResults && toolResults.length > 0 ? null : toolResponseText)
+      finalResponse: finalAssistantResponseText
     };
     
-    logger.info({ reqId: (req as any).reqId, toolCount: response.toolResults.length }, 'Chat request completed successfully');
+    logger.info({ 
+      reqId: (req as any).reqId, 
+      toolCount: response.toolResults.length,
+      loopCount
+    }, 'Chat request completed successfully');
+    
     return res.json(response);
     
   } catch (error) {
