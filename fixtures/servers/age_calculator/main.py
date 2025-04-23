@@ -215,4 +215,4 @@ async def health_check() -> Dict[str, str]:
 if __name__ == "__main__":
     logger.info("Starting Age Calculator MCP server")
     # Initialize and run the server with stdio transport
-    mcp.run(transport='stdio') 
+    mcp.run(transport='stdio')
