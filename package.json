@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.4",
+    "@ai-sdk/google": "^1.2.13",
     "@modelcontextprotocol/sdk": "^1.8.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",

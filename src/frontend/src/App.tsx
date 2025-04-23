@@ -355,7 +355,7 @@ function App() {
                         </div>
 
                         <div className="flex justify-start my-2">
-                          <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={true}>
+                          <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={false}>
                             <CollapsibleTrigger asChild>
                               <Button variant="ghost" className="flex w-full justify-between p-4 rounded-lg">
                                 <div className="flex items-center gap-2">
@@ -370,7 +370,12 @@ function App() {
                             <CollapsibleContent className="px-4 pb-4">
                               <div className="space-y-4">
                                 {chatResponse.toolResults.map((tool, index) => (
-                                  <div key={index} className="rounded-md bg-muted p-3 border-l-2 border-primary/50">
+                                  <div key={index} className={`rounded-md p-3 border-l-2 ${
+                                    tool.name.includes('weather') ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-400' :
+                                    tool.name.includes('search') ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-400' :
+                                    tool.name.includes('destination') ? 'bg-green-50/50 dark:bg-green-950/20 border-green-400' :
+                                    'bg-muted border-primary/50'
+                                  }`}>
                                     <div className="flex items-center justify-between font-medium text-sm mb-2 text-muted-foreground">
                                       <div className="flex items-center gap-2">
                                         <Code className="h-4 w-4" />
@@ -378,12 +383,17 @@ function App() {
                                       </div>
                                       {/* Show sequence information if available */}
                                       {tool.sequence && tool.totalSteps && (
-                                        <Badge variant="outline" className="ml-auto">
+                                        <Badge variant="outline" className={`ml-auto ${
+                                          tool.name.includes('weather') ? 'bg-blue-100 dark:bg-blue-900' :
+                                          tool.name.includes('search') ? 'bg-violet-100 dark:bg-violet-900' :
+                                          tool.name.includes('destination') ? 'bg-green-100 dark:bg-green-900' :
+                                          ''
+                                        }`}>
                                           Step {tool.sequence} of {tool.totalSteps}
                                         </Badge>
                                       )}
                                     </div>
-                                    <div className="whitespace-pre-wrap font-mono text-xs bg-background/50 p-2 rounded-sm overflow-x-auto">
+                                    <div className="whitespace-pre-wrap font-mono text-xs bg-background/80 p-3 rounded-sm overflow-x-auto">
                                       {tool.result}
                                     </div>
                                   </div>
@@ -411,17 +421,21 @@ function App() {
                       </div>
                     )}
                     {/* Add final response with visual indicator if available */}
-                    {chatResponse && chatResponse.finalResponse && chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
+                    {chatResponse && chatResponse.finalResponse && (
                       <div className="flex justify-start w-full">
-                        <div className="rounded-lg p-3 bg-primary/10 w-full max-w-[80%] border-l-4 border-primary">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                              <CheckCircle className="h-4 w-4 text-primary" />
-                              <span>Final Summary</span>
+                        <div className="rounded-lg p-4 bg-primary/15 w-full max-w-[80%] border-l-4 border-primary">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-5 w-5 text-primary" />
+                              <span className="font-semibold text-base">Complete Answer</span>
                             </div>
-                            <Badge variant="outline" className="text-xs">Synthesized from {chatResponse.toolResults.length} tool{chatResponse.toolResults.length > 1 ? 's' : ''}</Badge>
+                            {chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
+                              <Badge variant="outline" className="text-xs">Based on {chatResponse.toolResults.length} tool result{chatResponse.toolResults.length > 1 ? 's' : ''}</Badge>
+                            )}
                           </div>
-                          <p className="whitespace-pre-wrap text-sm">{chatResponse.finalResponse}</p>
+                          <div className="whitespace-pre-wrap text-sm bg-background/80 p-3 rounded border border-muted">
+                            {chatResponse.finalResponse}
+                          </div>
                         </div>
                       </div>
                     )}

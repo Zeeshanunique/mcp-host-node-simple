@@ -121,13 +121,22 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
     let continueToolExecution = true;
     let loopCount = 0;
     const MAX_ITERATIONS = 5; // Prevent infinite loops
-    
+
+    // Add initial system message to guide the entire conversation
+    llm.append('user', `For queries requiring external data or specific operations, use the appropriate tools. 
+For multi-part queries, make sure to use all necessary tools to gather complete information.
+Always treat tool results as real data for analysis purposes, even if they're noted as simulated.
+After gathering all information, provide a comprehensive final answer that synthesizes all the tool results.`);
+
     while (continueToolExecution && loopCount < MAX_ITERATIONS) {
       loopCount++;
       logger.info({ reqId: (req as any).reqId, iteration: loopCount }, 'Starting tool execution iteration');
       
       // Generate response with tools to let the LLM decide what tools to use next
-      const generationResult = await llm.generate({ tools: mcpTools });
+      const generationResult = await llm.generate({ 
+        tools: mcpTools,
+        temperature: 0.2, // Lower temperature for tool selection to be more precise
+      });
       
       // Capture the assistant's thinking/reasoning
       const assistantMessage = generationResult.response.messages.find(m => m.role === 'assistant');
@@ -200,16 +209,20 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
           totalSoFar: allToolResults.length
         }, 'Added tool result to conversation');
       }
-      
-      // If no more tools are needed, break the loop
-      if (currentToolResults.length === 0) {
-        continueToolExecution = false;
-      }
     }
     
     // Generate the final response after all tools have been executed
     logger.debug({ reqId: (req as any).reqId }, 'Generating final response after all tools');
-    const finalGenerationResult = await llm.generate();
+
+    // Instead of adding another system message, add a user message asking for a summary
+    llm.append('user', `I need a complete summary of all the information gathered from the ${allToolResults.length} tool${allToolResults.length !== 1 ? 's' : ''} above. Please synthesize all the data into a comprehensive answer to my original question.`);
+
+    // Generate the final response with parameters to encourage comprehensive answers
+    const finalGenerationResult = await llm.generate({
+      temperature: 0.7, // Slightly higher temperature for more comprehensive responses
+      maxTokens: 4000, // Allow longer responses for better synthesis
+      // No tools passed here so the model focuses on synthesis
+    });
     const finalAssistantResponseText = finalGenerationResult.text;
     
     // Prepare and return the response payload with all accumulated tool results

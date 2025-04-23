@@ -1,6 +1,6 @@
 {
-  "name": "calc-mcp",
+  "name": "mcp-calculator",
   "version": "1.0.0",
   "type": "module",
   "private": true
-}
+} 
