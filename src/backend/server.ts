@@ -2,7 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { MCPHost } from '../mcp-host.js';
 import { LLMClient } from '../llm-client.js';
-import { AnthropicProvider } from '../llm-provider.js';
+import { AnthropicProvider, OpenAIProvider } from '../llm-provider.js';
+import { getProviderInstance, setProvider, getCurrentProvider, getAvailableProviders } from '../providers.js';
 import { CoreMessage } from 'ai';
 import path from 'path';
 import fs from 'node:fs';
@@ -75,13 +76,52 @@ async function initializeHost() {
   }
 }
 
-// API endpoints - Use proper route method typing
+// API endpoint for selecting the LLM provider
+app.post('/api/provider', (req: Request, res: Response) => {
+  (async () => {
+  try {
+    const { provider } = req.body;
+    
+    if (!provider || (provider !== 'anthropic' && provider !== 'openai')) {
+      return res.status(400).json({ 
+        error: 'Invalid provider specified', 
+        message: 'Provider must be either "anthropic" or "openai"' 
+      });
+    }
+    
+    const success = setProvider(provider);
+    if (!success) {
+      return res.status(400).json({ error: 'Failed to set provider' });
+    }
+    
+    logger.info({ provider }, '[Server] Provider changed');
+    
+    return res.status(200).json({ 
+      success: true, 
+      provider: getCurrentProvider(),
+      message: `Provider changed to ${getCurrentProvider()}`
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error changing provider');
+    return res.status(500).json({ error: 'Failed to change provider' });
+  }
+  })();
+});
+
+// API endpoint to get current provider
+app.get('/api/provider', (_req: Request, res: Response) => {
+  res.status(200).json({ 
+    provider: getCurrentProvider(),
+    availableProviders: getAvailableProviders()
+  });
+});
+
 // API endpoint for chat requests
 app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
   (async () => {
   try {
     // Extract and validate history from the request body
-    const { history } = req.body as { history: CoreMessage[] }; 
+    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' }; 
     
     if (!history || !Array.isArray(history) || history.length === 0) {
       logger.warn({ reqId: (req as any).reqId }, 'Invalid chat request: empty or missing history');
@@ -101,9 +141,15 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
       lastUserMessage: typeof lastMessage.content === 'string' ? lastMessage.content.substring(0, 50) : '[complex content]'
     }, 'Processing chat request');
     
+    // Use the provider from the request if specified, otherwise use the current default
+    if (provider) {
+      // Temporarily set the provider for this request if specified
+      setProvider(provider);
+    }
+    
     // Initialize the LLM client with the provided history
     const llm = new LLMClient({
-      provider: new AnthropicProvider(),
+      provider: getProviderInstance(),
       initialMessages: history 
     });
     
@@ -112,7 +158,8 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
     logger.info({ 
       reqId: (req as any).reqId,
       toolCount: Object.keys(mcpTools).length,
-      toolList: await host.toolList()
+      toolList: await host.toolList(),
+      provider: getCurrentProvider()
     }, 'Loaded MCP tools for request');
     
     // ========== MULTI-STEP EXECUTION LOOP ==========

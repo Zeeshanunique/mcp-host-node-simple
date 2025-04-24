@@ -1,6 +1,6 @@
 import './backend/server.js';
 import { LLMClient, LLMToolResults } from "./llm-client.js";
-import { AnthropicProvider } from "./llm-provider.js";
+import { AnthropicProvider, OpenAIProvider } from "./llm-provider.js";
 import { MCPHost } from "./mcp-host.js";
 
 // This file serves as the main entry point for Vercel deployment
@@ -13,7 +13,7 @@ async function main() {
     mcpServerConfig: "./mcp-servers.json", // This path is okay for local dev
   });
 
-  const llm = new LLMClient({ provider: new AnthropicProvider() });
+  const llm = new LLMClient({ provider: new OpenAIProvider() });
 
   llm.append("user", "Use add tool to calculate numbers 100 + 1000?");
 

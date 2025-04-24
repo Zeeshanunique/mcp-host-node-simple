@@ -44,6 +44,12 @@ interface ChatMessage {
   content: string;
 }
 
+// Add a new interface for provider selection
+interface ProviderInfo {
+  provider: string;
+  availableProviders: string[];
+}
+
 function App() {
   const [message, setMessage] = useState('');
   const [chatResponse, setResponse] = useState<ChatResponse | null>(null);
@@ -55,6 +61,10 @@ function App() {
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const chatEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  // Add provider state
+  const [currentProvider, setCurrentProvider] = useState<string>('anthropic');
+  const [availableProviders, setAvailableProviders] = useState<string[]>(['anthropic', 'google']);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,8 +147,63 @@ function App() {
     }
   };
 
+  // Fetch the current provider information
+  const fetchProvider = async () => {
+    try {
+      // Get the API URL from environment variables
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      const response = await fetch(`${apiUrl}/api/provider`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch provider information');
+      }
+      const data: ProviderInfo = await response.json();
+      
+      setCurrentProvider(data.provider);
+      setAvailableProviders(data.availableProviders);
+      
+      console.log("Current LLM provider:", data.provider);
+    } catch (error) {
+      console.error('Error fetching provider information:', error);
+      // Don't show an error toast for this, as it's not critical
+    }
+  };
+
+  // Handle provider change
+  const handleProviderChange = async (provider: string) => {
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      const response = await fetch(`${apiUrl}/api/provider`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ provider }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to change provider');
+      }
+      
+      const data = await response.json();
+      setCurrentProvider(data.provider);
+      
+      toast({
+        title: "Provider Changed",
+        description: `Now using ${data.provider} as the LLM provider`,
+      });
+    } catch (error) {
+      console.error('Error changing provider:', error);
+      toast({
+        variant: "destructive",
+        title: "Provider Change Failed",
+        description: "Failed to change the LLM provider. Please try again.",
+      });
+    }
+  };
+
   useEffect(() => {
     fetchTools();
+    fetchProvider();
   }, []);
 
   // Handle form submission
@@ -168,7 +233,10 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ history: updatedChatHistory }),
+        body: JSON.stringify({ 
+          history: updatedChatHistory,
+          provider: currentProvider // Include the current provider
+        }),
       });
 
       if (!response.ok) {
@@ -246,6 +314,20 @@ function App() {
             <h1 className="text-2xl font-bold text-primary">MCP Host Interface</h1>
           </div>
           <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-muted-foreground" />
+              <select
+                value={currentProvider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                className="text-sm rounded-md border border-input bg-background px-3 py-1"
+              >
+                {availableProviders.map(provider => (
+                  <option key={provider} value={provider}>
+                    {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <span className="text-sm text-muted-foreground hidden md:inline-flex items-center gap-1">
               <Code className="h-4 w-4" />
               {tools.length} Tools Available

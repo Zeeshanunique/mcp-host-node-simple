@@ -33,6 +33,9 @@ const configSchema = z.object({
   ANTHROPIC_API_KEY: z.string({
     required_error: "ANTHROPIC_API_KEY is required in .env file"
   }),
+  GOOGLE_API_KEY: z.string({
+    required_error: "GOOGLE_API_KEY is required in .env file"
+  }),
   
   // MCP configuration
   MCP_CONFIG_PATH: z.string().default('./mcp-servers.json'),
@@ -54,6 +57,7 @@ const config = configSchema.parse({
   FRONTEND_URL: process.env.FRONTEND_URL,
   CORS_ORIGINS: process.env.CORS_ORIGINS,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
   MCP_CONFIG_PATH: process.env.MCP_CONFIG_PATH,
   LOG_LEVEL: process.env.LOG_LEVEL,
   RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS,
