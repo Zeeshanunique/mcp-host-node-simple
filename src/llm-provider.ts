@@ -5,6 +5,9 @@ import {
 import {
   createOpenAI,
 } from '@ai-sdk/openai';
+import {
+  createAmazonBedrock,
+} from '@ai-sdk/amazon-bedrock';
 import { LanguageModel } from 'ai';
 import 'dotenv/config';
 
@@ -55,6 +58,38 @@ export class OpenAIProvider implements LLMProvider {
     });
     
     // Create the model with default settings
+    this.#model = provider(this.#modelName);
+  }
+
+  model(): LanguageModel {
+    return this.#model;
+  }
+
+  name(): string {
+    return `${this.#providerName}::${this.#modelName}`;
+  }
+}
+
+/**
+ * AWS Bedrock provider implementation for Anthropic Claude.
+ * 
+ * This provider allows using Anthropic's Claude models via AWS Bedrock.
+ * It leverages AWS infrastructure and credentials, providing an alternative
+ * to direct Anthropic API access.
+ */
+export class BedrockAnthropicProvider implements LLMProvider {
+  #providerName = 'BedrockAnthropic';
+  #modelName = 'anthropic.claude-3-7-sonnet-20250219-v1:0';
+  #model: LanguageModel;
+
+  constructor() {
+    const provider = createAmazonBedrock({
+      region: process.env.AWS_REGION || 'us-east-1',
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    });
+    
+    // Create the model with Bedrock
     this.#model = provider(this.#modelName);
   }
 

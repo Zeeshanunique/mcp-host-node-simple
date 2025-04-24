@@ -82,10 +82,10 @@ app.post('/api/provider', (req: Request, res: Response) => {
   try {
     const { provider } = req.body;
     
-    if (!provider || (provider !== 'anthropic' && provider !== 'openai')) {
+    if (!provider || (provider !== 'anthropic' && provider !== 'openai' && provider !== 'bedrock')) {
       return res.status(400).json({ 
         error: 'Invalid provider specified', 
-        message: 'Provider must be either "anthropic" or "openai"' 
+        message: 'Provider must be either "anthropic", "openai", or "bedrock"' 
       });
     }
     
@@ -121,7 +121,7 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
   (async () => {
   try {
     // Extract and validate history from the request body
-    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' }; 
+    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' | 'bedrock' };
     
     if (!history || !Array.isArray(history) || history.length === 0) {
       logger.warn({ reqId: (req as any).reqId }, 'Invalid chat request: empty or missing history');

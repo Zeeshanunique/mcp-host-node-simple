@@ -307,7 +307,7 @@ function App() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <header className="sticky top-0 z-10 w-full bg-background border-b p-4">
+      <header className="sticky top-0 z-10 w-full bg-background border-b py-2">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Bot className="h-6 w-6 text-primary" />
@@ -347,7 +347,7 @@ function App() {
         isInputEmpty={!message.trim()}
       />
 
-      <main className="flex-1 container mx-auto p-4 flex flex-col">
+      <main className="flex-1 container mx-auto p-2 flex flex-col">
         <Tabs defaultValue="chat" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
           <TabsList className="self-center mb-4 w-full sm:w-auto">
             <TabsTrigger value="chat" className="flex items-center gap-2 flex-1 sm:flex-initial">
@@ -366,8 +366,8 @@ function App() {
           </TabsList>
           
           <TabsContent value="chat" className="flex-1 flex flex-col space-y-4">
-            <Card className="flex-1 flex flex-col">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <Card className="flex-1 flex flex-col border-0 shadow-none">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 px-4 pt-2">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <MessageSquare className="h-5 w-5 text-primary" />
@@ -388,7 +388,7 @@ function App() {
                 )}
               </CardHeader>
               <CardContent className="flex-1">
-                <ScrollArea className="h-[calc(65vh-12rem)] pr-4">
+                <ScrollArea className="h-[calc(75vh-8rem)] pr-4">
                   <div className="space-y-4">
                     {chatHistory.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-64 text-muted-foreground p-4">
@@ -439,7 +439,7 @@ function App() {
                         <div className="flex justify-start my-2">
                           <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={false}>
                             <CollapsibleTrigger asChild>
-                              <Button variant="ghost" className="flex w-full justify-between p-4 rounded-lg">
+                              <Button variant="ghost" className="flex w-full justify-between p-2 rounded-lg">
                                 <div className="flex items-center gap-2">
                                   <Cpu className="h-4 w-4 text-primary" />
                                   <span className="text-sm font-medium">
@@ -525,23 +525,37 @@ function App() {
                   </div>
                 </ScrollArea>
               </CardContent>
-              <CardFooter className="border-t pt-4">
-                <form className="w-full space-y-2" onSubmit={handleSubmit}>
+              <CardFooter className="border-t pt-2 pb-2 px-4">
+                <form className="w-full space-y-1" onSubmit={handleSubmit}>
                   {error && (
-                    <Alert variant="destructive">
+                    <Alert variant="destructive" className="py-2">
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>Error</AlertTitle>
                       <AlertDescription>{error}</AlertDescription>
                     </Alert>
                   )}
                   <div className="flex flex-col gap-2">
-                    <Textarea
-                      placeholder="Type your message here...  (Ctrl+Enter to send)"
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      className="min-h-[80px] resize-none"
-                      disabled={isLoading}
-                    />
+                    <div className="relative">
+                      <Textarea
+                        placeholder="Type your message here...  (Ctrl+Enter to send)"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        className="min-h-[40px] max-h-[120px] resize-none pr-12 py-2"
+                        disabled={isLoading}
+                      />
+                      <Button 
+                        type="submit" 
+                        size="sm"
+                        className="absolute bottom-2 right-2 p-2 rounded-full h-8 w-8 flex items-center justify-center" 
+                        disabled={!message.trim() || isLoading}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                     <div className="flex justify-between items-center">
                       <div className="text-xs text-muted-foreground">
                         {selectedTool && (
@@ -551,23 +565,6 @@ function App() {
                           </Badge>
                         )}
                       </div>
-                      <Button 
-                        type="submit" 
-                        className="gap-1 min-w-[100px]" 
-                        disabled={!message.trim() || isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4" />
-                            Send
-                          </>
-                        )}
-                      </Button>
                     </div>
                   </div>
                 </form>
@@ -644,7 +641,7 @@ function App() {
         </Tabs>
       </main>
       
-      <footer className="border-t py-4 bg-muted/20">
+      <footer className="border-t py-2 bg-muted/20">
         <div className="container mx-auto flex flex-col md:flex-row justify-between items-center px-4 gap-4">
           <div className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
