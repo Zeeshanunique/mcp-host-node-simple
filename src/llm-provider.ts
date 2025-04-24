@@ -184,6 +184,11 @@ export class AzureOpenAIProvider implements LLMProvider {
           case 'assistant':
             formattedMessages.push({ role: 'assistant', content });
             break;
+          case 'tool':
+            // Skip tool messages as they're not directly supported in Azure OpenAI's API format
+            // The information should be included in assistant messages
+            console.warn('[AzureOpenAIProvider] Skipping tool message in Azure format');
+            break;
           default:
             // Default to user for unknown roles
             formattedMessages.push({ role: 'user', content });
@@ -213,16 +218,46 @@ export class AzureOpenAIProvider implements LLMProvider {
             messages: formattedMessages as any,
             max_tokens: maxTokens,
             temperature: temperature,
+            // If tools are provided, format them for Azure OpenAI
+            ...(options.mode?.tools ? {
+              tools: options.mode.tools.map((tool: any) => ({
+                type: 'function',
+                function: {
+                  name: tool.name,
+                  description: tool.description || '',
+                  parameters: tool.parameters || { type: 'object', properties: {} }
+                }
+              }))
+            } : {}),
+            // If tool choice is provided, format it for Azure OpenAI
+            ...(options.mode?.toolChoice ? {
+              tool_choice: options.mode.toolChoice.type === 'auto' ? 'auto' : 'required'
+            } : {})
           });
           
           console.log('[AzureOpenAIProvider] Response received:', 
                       { status: 'success', content: response.choices[0]?.message?.content });
           
-          // Format the response to match the expected output
-          const choice = response.choices[0];
+          // Properly format the message content for the ai library
+          const messageContent = response.choices[0]?.message?.content || '';
+          const toolCalls = response.choices[0]?.message?.tool_calls || [];
           
+          // If we have tool calls, format them appropriately for the ai library
+          const formattedContent = toolCalls.length > 0 
+            ? [
+                { type: 'text', text: messageContent || 'Processing with tools...' },
+                ...toolCalls.map((toolCall: any) => ({
+                  type: 'tool_call',
+                  id: toolCall.id,
+                  name: toolCall.function.name,
+                  parameters: JSON.parse(toolCall.function.arguments || '{}')
+                }))
+              ]
+            : messageContent;
+          
+          // Format the response to match the expected output for the ai library
           return {
-            content: choice.message.content || '',
+            content: formattedContent,
             id: response.id,
             model: this.#deploymentName,
             usage: {

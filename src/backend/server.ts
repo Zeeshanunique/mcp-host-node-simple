@@ -153,6 +153,10 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
       initialMessages: history 
     });
     
+    // Log the provider being used
+    const currentProviderName = getCurrentProvider();
+    logger.info({ reqId: (req as any).reqId, provider: currentProviderName }, 'Using LLM provider');
+    
     // Load MCP tools directly from the host
     const mcpTools = await host.tools();
     logger.info({ 
@@ -272,9 +276,49 @@ After gathering all information, provide a comprehensive final answer that synth
     });
     const finalAssistantResponseText = finalGenerationResult.text;
     
+    // For Azure provider, ensure we have proper responses even if empty
+    // This is the fix for the Azure provider issue
+    let initialResponseText = toolResponseText;
+    let finalResponseTextForFrontend = finalAssistantResponseText;
+    
+    // Special handling for Azure provider to ensure we have content to display in the frontend
+    if (currentProviderName === 'azure') {
+      // Log the current state of the responses
+      logger.info({ 
+        reqId: (req as any).reqId, 
+        provider: currentProviderName,
+        hasInitialResponse: !!initialResponseText && initialResponseText.trim() !== '',
+        hasFinalResponse: !!finalAssistantResponseText && finalAssistantResponseText.trim() !== '',
+        toolResultsCount: allToolResults.length
+      }, 'Azure response state before formatting');
+      
+      // Case 1: No initial response but we have tool results - provide context
+      if ((!initialResponseText || initialResponseText.trim() === '') && allToolResults.length > 0) {
+        initialResponseText = `Azure OpenAI is working with tools to process your request: "${lastMessage.content}"`;
+      }
+      // Case 2: No initial response and no tool results, but we have a final response
+      else if ((!initialResponseText || initialResponseText.trim() === '') && 
+               (finalAssistantResponseText && finalAssistantResponseText.trim() !== '')) {
+        initialResponseText = `Processing your request: "${lastMessage.content}"`;
+      }
+      // Case 3: No initial response, no tool results, no final response
+      else if ((!initialResponseText || initialResponseText.trim() === '') && 
+               (!finalAssistantResponseText || finalAssistantResponseText.trim() === '')) {
+        initialResponseText = `Azure OpenAI is processing your request: "${lastMessage.content}"`;
+        finalResponseTextForFrontend = "Azure OpenAI has processed your request, but no textual response was generated. This can happen when using tools or with certain types of queries. Please try a different question or check the tool results if available.";
+      }
+      
+      logger.info({ 
+        reqId: (req as any).reqId, 
+        provider: currentProviderName,
+        initialResponseUpdated: initialResponseText !== toolResponseText,
+        finalResponseUpdated: finalResponseTextForFrontend !== finalAssistantResponseText
+      }, 'Applied Azure-specific response formatting');
+    }
+    
     // Prepare and return the response payload with all accumulated tool results
     const response = { 
-      initialResponse: toolResponseText,
+      initialResponse: initialResponseText,
       toolResults: allToolResults.map((tr: any) => { 
         const toolName = tr.toolName || 'unknown';
         const resultContent = tr.result?.content;
@@ -288,13 +332,15 @@ After gathering all information, provide a comprehensive final answer that synth
           totalSteps: allToolResults.length
         };
       }),
-      finalResponse: finalAssistantResponseText
+      finalResponse: finalResponseTextForFrontend
     };
     
     logger.info({ 
       reqId: (req as any).reqId, 
       toolCount: response.toolResults.length,
-      loopCount
+      loopCount,
+      hasInitialResponse: !!response.initialResponse,
+      hasFinalResponse: !!response.finalResponse
     }, 'Chat request completed successfully');
     
     return res.json(response);
