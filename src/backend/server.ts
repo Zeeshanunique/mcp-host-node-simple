@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { MCPHost } from '../mcp-host.js';
 import { LLMClient } from '../llm-client.js';
-import { AnthropicProvider, OpenAIProvider } from '../llm-provider.js';
+import { AnthropicProvider, OpenAIProvider, AzureOpenAIProvider } from '../llm-provider.js';
 import { getProviderInstance, setProvider, getCurrentProvider, getAvailableProviders } from '../providers.js';
 import { CoreMessage } from 'ai';
 import path from 'path';
@@ -82,10 +82,10 @@ app.post('/api/provider', (req: Request, res: Response) => {
   try {
     const { provider } = req.body;
     
-    if (!provider || (provider !== 'anthropic' && provider !== 'openai' && provider !== 'bedrock')) {
+    if (!provider || (provider !== 'anthropic' && provider !== 'openai' && provider !== 'bedrock' && provider !== 'azure')) {
       return res.status(400).json({ 
         error: 'Invalid provider specified', 
-        message: 'Provider must be either "anthropic", "openai", or "bedrock"' 
+        message: 'Provider must be either "anthropic", "openai", "bedrock", or "azure"' 
       });
     }
     
@@ -121,7 +121,7 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
   (async () => {
   try {
     // Extract and validate history from the request body
-    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' | 'bedrock' };
+    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' | 'bedrock' | 'azure' };
     
     if (!history || !Array.isArray(history) || history.length === 0) {
       logger.warn({ reqId: (req as any).reqId }, 'Invalid chat request: empty or missing history');
