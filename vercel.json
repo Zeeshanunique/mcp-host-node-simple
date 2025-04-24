@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build:all",
+  "outputDirectory": "src/frontend/build",
+  "framework": "node",
+  "functions": {
+    "api/**/*.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+} 

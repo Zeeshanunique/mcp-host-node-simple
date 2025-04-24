@@ -22,7 +22,8 @@
     "lint": "eslint --ext .ts,.tsx src/",
     "lint:fix": "eslint --ext .ts,.tsx src/ --fix",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:esm": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js"
+    "test:esm": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "vercel-build": "npm run install:all && npm run build:all"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^2.2.8",

@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, Application, RequestHandler } from 'express';
 import cors from 'cors';
 import { MCPHost } from '../mcp-host.js';
 import { LLMClient } from '../llm-client.js';
@@ -10,6 +10,10 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 import config from '../config.js';
 import logger from '../utils/logger.js';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import http from 'http';
 
 // Get directory paths for proper file resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +22,7 @@ const __dirname = path.dirname(__filename);
 logger.info('[Server] Initializing Express...');
 const app = express();
 const port = config.BACKEND_PORT || config.PORT; // Use BACKEND_PORT, fall back to PORT for compatibility
+let server: http.Server;
 
 // Define error handler middleware
 const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
@@ -40,8 +45,37 @@ const corsOptions = {
   credentials: true,
 };
 
+// Add security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", ...(config.CORS_ORIGINS === '*' ? ['*'] : config.CORS_ORIGINS.split(','))],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+    }
+  }
+}));
+
+// Add compression
+app.use(compression());
+
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' })); // Limit payload size
+
+// Configure rate limiting
+const apiLimiter = rateLimit({
+  windowMs: config.RATE_LIMIT_WINDOW_MS || 60 * 1000, // 1 minute by default
+  max: config.RATE_LIMIT_MAX_REQUESTS || 30, // 30 requests per minute by default
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+  skip: (_req) => process.env.NODE_ENV === 'development' // Skip in development
+});
+
+// Apply rate limiting to API routes
+app.use('/api/', apiLimiter);
 
 // Add request ID middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -49,6 +83,21 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   logger.debug({ path: req.path, method: req.method, ip: req.ip, reqId: (req as any).reqId }, 'Incoming request');
   next();
 });
+
+// Serve static files from frontend build in production
+if (config.NODE_ENV === 'production') {
+  const frontendBuildPath = path.resolve(__dirname, '../../frontend/build');
+  if (fs.existsSync(frontendBuildPath)) {
+    logger.info({ path: frontendBuildPath }, '[Server] Serving static files from frontend build');
+    app.use(express.static(frontendBuildPath, {
+      maxAge: '1d', // Cache static assets for 1 day
+      etag: true,
+      lastModified: true
+    }));
+  } else {
+    logger.warn({ path: frontendBuildPath }, '[Server] Frontend build directory not found');
+  }
+}
 
 logger.info('[Server] Middleware applied.');
 
@@ -75,6 +124,46 @@ async function initializeHost() {
     logger.info({ tools: availableTools }, "[Server] Continuing with available tools");
   }
 }
+
+// Enhanced health check endpoint
+app.get('/health', (req, res) => {
+  const healthData = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: config.NODE_ENV,
+    memory: process.memoryUsage(),
+    toolsCount: Object.keys(tools).length,
+    version: process.env.npm_package_version
+  };
+  
+  // Check if MCP host is running properly
+  if (Object.keys(tools).length === 0) {
+    healthData.status = 'degraded';
+  }
+  
+  const statusCode = healthData.status === 'ok' ? 200 : 500;
+  res.status(statusCode).json(healthData);
+});
+
+// Add detailed readiness probe
+const readyHandler: RequestHandler = async (_req, res) => {
+  try {
+    // Check MCP tools are available
+    const toolList = await host.toolList();
+    if (toolList.length === 0) {
+      res.status(503).json({ status: 'not_ready', reason: 'mcp_tools_unavailable' });
+      return;
+    }
+    
+    res.status(200).json({ status: 'ready', toolsAvailable: toolList.length });
+  } catch (error) {
+    logger.error({ error }, 'Readiness check failed');
+    res.status(503).json({ status: 'not_ready', reason: 'error_checking_readiness' });
+  }
+};
+
+app.get('/ready', readyHandler);
 
 // API endpoint for selecting the LLM provider
 app.post('/api/provider', (req: Request, res: Response) => {
@@ -367,68 +456,64 @@ app.get('/api/tools', (req: Request, res: Response) => {
   })();
 });
 
-// Add health check endpoint
-app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({ status: 'ok', environment: config.NODE_ENV });
-});
-
-// Serve frontend in production mode
-if (config.NODE_ENV === 'production') {
-  const frontendBuildPath = path.resolve(__dirname, '../../src/frontend/build');
+// Graceful shutdown function
+const gracefulShutdown = async (signal: string) => {
+  logger.info({ signal }, '[Server] Received shutdown signal');
   
-  if (fs.existsSync(frontendBuildPath)) {
-    logger.info({ path: frontendBuildPath }, 'Serving frontend static files');
-    // Serve static files from the React build
-    app.use(express.static(frontendBuildPath));
-    
-    // Simple route for serving index.html, instead of complex wildcard route
-    app.use((req: Request, res: Response) => {
-      res.sendFile(path.resolve(frontendBuildPath, 'index.html'));
+  if (server) {
+    logger.info('[Server] Closing HTTP server');
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
     });
-  } else {
-    logger.warn({ path: frontendBuildPath }, 'Frontend build directory not found');
   }
+  
+  logger.info('[Server] Shutting down MCP tools');
+  try {
+    await host.shutdown();
+    logger.info('[Server] Shutdown complete');
+  } catch (err) {
+    logger.error({ err }, '[Server] Error during MCP shutdown');
+  }
+  
+  process.exit(0);
+};
+
+// Only start the server if not being imported as a module
+// This allows for serverless deployment
+if (process.env.VERCEL !== '1') {
+  // Initialize the host when starting the server directly
+  initializeHost().then(() => {
+    server = app.listen(port, () => {
+      logger.info({ port }, '[Server] Express server listening on port');
+    });
+    
+    // Enable keep-alive and proper connection handling
+    server.keepAliveTimeout = 65000; // 65 seconds
+    server.headersTimeout = 66000; // 66 seconds
+  }).catch(err => {
+    logger.error({ err }, '[Server] Error initializing host');
+    process.exit(1);
+  });
+  
+  // Register shutdown handlers
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+} else {
+  // When running on Vercel, initialize on first request
+  app.use(async (req: Request, _res: Response, next: NextFunction) => {
+    if (!Object.keys(tools).length) {
+      try {
+        await initializeHost();
+      } catch (error) {
+        logger.error({ error }, '[Server] Error initializing host on first request');
+      }
+    }
+    next();
+  });
 }
 
-// Apply error handler as the last middleware
+// Add error handler middleware
 app.use(errorHandler);
 
-// Start server
-initializeHost().then(() => {
-  app.listen(port, () => {
-    logger.info(`[Server] API server running on port ${port} in ${config.NODE_ENV} mode`);
-  });
-}).catch(err => {
-  logger.error({ err }, '[Server] Failed to initialize MCP host');
-  
-  // Start the server anyway with whatever tools were loaded successfully
-  app.listen(port, () => {
-    logger.warn(`[Server] API server running on port ${port} with limited functionality`);
-  });
-});
-
-// Handle application shutdown gracefully
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  // Implement any cleanup needed here
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  // Implement any cleanup needed here
-  process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-  logger.fatal({ error }, 'Uncaught exception, shutting down');
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason) => {
-  logger.fatal({ reason }, 'Unhandled rejection, shutting down');
-  process.exit(1);
-});
-
-// Export app for testing
-export default app;
+// Export the app for serverless usage
+export { app };

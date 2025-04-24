@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { readMCPTransport } from './mcp-transport.js';
 import { experimental_createMCPClient } from 'ai';
+import logger from './utils/logger.js';
 
 export type MCPHostOptions = {
   mcpServerConfig: string;
@@ -12,70 +13,79 @@ export type MCPClient = Awaited<
 
 export class MCPHost {
   #tools: Record<string, any>;
+  #childProcesses: Record<string, any>;
 
   constructor() {
     this.#tools = {};
+    this.#childProcesses = {};
   }
 
   async start(options: MCPHostOptions) {
-    console.log('[MCPHost] Host get started');
+    logger.info('[MCPHost] Host get started');
 
     const configPath = path.resolve(process.cwd(), options.mcpServerConfig);
-    console.log('[MCPHost] Reading config from:', configPath);
+    logger.info({ configPath }, '[MCPHost] Reading config from');
     
     const transports = await readMCPTransport(configPath);
-    console.log('[MCPHost] Configured servers:', Object.keys(transports));
+    logger.info({ servers: Object.keys(transports) }, '[MCPHost] Configured servers');
 
     // Create clients for each server, handling errors individually
     const clients: MCPClient[] = [];
     for (const [name, transport] of Object.entries(transports)) {
       try {
-        console.log(`[MCPHost] Creating client for server: ${name}`);
+        logger.info({ name }, '[MCPHost] Creating client for server');
         const client = await experimental_createMCPClient({ transport });
+        
+        // Store reference to child process if available
+        if ((transport as any).process) {
+          this.#childProcesses[name] = (transport as any).process;
+          logger.debug({ name, pid: (transport as any).process.pid }, '[MCPHost] Tracking child process');
+        }
+        
         clients.push(client);
-        console.log(`[MCPHost] Successfully created client for server: ${name}`);
+        logger.info({ name }, '[MCPHost] Successfully created client for server');
       } catch (err) {
-        console.error(`[MCPHost] Error creating client for ${name}:`, err);
+        logger.error({ err, name }, '[MCPHost] Error creating client');
         // Continue with other servers
       }
     }
 
-    console.log(`[MCPHost] Created ${clients.length} clients successfully`);
+    logger.info({ count: clients.length }, '[MCPHost] Created clients successfully');
 
     // Load tools from each client, handling errors individually
     for (const client of clients) {
       try {
-        console.log('[MCPHost] Getting tools from client...');
+        logger.debug('[MCPHost] Getting tools from client...');
         const tools = await client.tools();
-        console.log('[MCPHost] Got tools:', Object.keys(tools));
+        logger.info({ tools: Object.keys(tools) }, '[MCPHost] Got tools');
 
         for (const [name, tool] of Object.entries(tools)) {
-          console.log(`[MCPHost] Adding tool: ${name}`);
+          logger.debug({ name }, '[MCPHost] Adding tool');
           this.#tools = {
             ...this.#tools,
             [name]: tool,
           };
         }
       } catch (err) {
-        console.error('[MCPHost] Error getting tools from client:', err);
+        logger.error({ err }, '[MCPHost] Error getting tools from client');
         // Continue with other clients
       }
     }
 
     const toolsValid = await this.validateTools();
-    console.log(`[MCPHost] Tool validation: ${toolsValid ? 'Passed' : 'Failed'}`);
-    console.log('[MCPHost] Host started with', await this.toolList());
+    logger.info({ valid: toolsValid }, '[MCPHost] Tool validation');
+    logger.info({ tools: await this.toolList() }, '[MCPHost] Host started with');
   }
 
   async tools() {
-    console.log('[MCPHost] Returning configured tools:', Object.keys(this.#tools).length);
+    logger.debug({ count: Object.keys(this.#tools).length }, '[MCPHost] Returning configured tools');
     return this.#tools;
   }
 
   async toolList(): Promise<string[]> {
     const toolsObj = await this.tools();
     const toolNames = Object.keys(toolsObj);
-    console.log('[MCPHost] Available tools:', toolNames);
+    logger.debug({ tools: toolNames }, '[MCPHost] Available tools');
     return toolNames;
   }
 
@@ -83,10 +93,10 @@ export class MCPHost {
   async validateTools(): Promise<boolean> {
     const tools = await this.tools();
     const toolCount = Object.keys(tools).length;
-    console.log(`[MCPHost] Validating tools: found ${toolCount} tools`);
+    logger.debug({ count: toolCount }, '[MCPHost] Validating tools');
     
     if (toolCount === 0) {
-      console.warn('[MCPHost] No tools available - MCP functionality will be limited');
+      logger.warn('[MCPHost] No tools available - MCP functionality will be limited');
       return false;
     }
     
@@ -96,11 +106,11 @@ export class MCPHost {
       if (typeof tool === 'function' || (typeof tool === 'object' && tool !== null)) {
         validTools++;
       } else {
-        console.warn(`[MCPHost] Invalid tool: ${name} (${typeof tool})`);
+        logger.warn({ name, type: typeof tool }, '[MCPHost] Invalid tool');
       }
     }
     
-    console.log(`[MCPHost] Tool validation: ${validTools}/${toolCount} tools are valid`);
+    logger.info({ valid: validTools, total: toolCount }, '[MCPHost] Tool validation summary');
     return validTools > 0;
   }
 
@@ -125,6 +135,86 @@ export class MCPHost {
     }
     
     return enhancedTools;
+  }
+
+  // Add timeout handling for subprocess tools
+  async executeTool(toolName: string, args: any, timeout = 30000) {
+    return new Promise(async (resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Tool execution timed out after ${timeout}ms: ${toolName}`));
+      }, timeout);
+      
+      try {
+        if (!this.#tools[toolName]) {
+          throw new Error(`Tool not found: ${toolName}`);
+        }
+        
+        const result = await this.#tools[toolName](args);
+        clearTimeout(timeoutId);
+        resolve(result);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    });
+  }
+
+  // Add retry logic for MCP tools
+  async executeWithRetry(toolName: string, args: any, options: any = {}) {
+    const maxRetries = options.maxRetries || 3;
+    const retryDelay = options.retryDelay || 500;
+    
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.executeTool(toolName, args, options.timeout || 30000);
+      } catch (error: unknown) {
+        lastError = error;
+        logger.warn({ 
+          toolName, 
+          attempt, 
+          maxRetries, 
+          error: error instanceof Error ? error.message : String(error)
+        }, `Tool execution failed, retrying...`);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+
+  // Add method to shutdown resources
+  async shutdown() {
+    const processes = Object.values(this.#childProcesses);
+    logger.info({ count: processes.length }, '[MCPHost] Shutting down child processes');
+    
+    const shutdownPromises = processes.map(process => {
+      return new Promise(resolve => {
+        if (!process || process.killed) {
+          resolve(true);
+          return;
+        }
+        
+        // Try gentle SIGTERM first
+        process.kill('SIGTERM');
+        
+        // Give process 2 seconds to terminate gracefully
+        setTimeout(() => {
+          if (!process.killed) {
+            process.kill('SIGKILL');
+          }
+          resolve(true);
+        }, 2000);
+      });
+    });
+    
+    await Promise.all(shutdownPromises);
+    logger.info('[MCPHost] All child processes terminated');
+    return true;
   }
 
   private categorizeToolByName(name: string): string {
