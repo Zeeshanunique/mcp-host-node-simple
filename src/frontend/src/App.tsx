@@ -542,7 +542,7 @@ function App() {
                         </div>
 
                         <div className="flex justify-start my-2">
-                          <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={false}>
+                          <Collapsible defaultOpen={false}>
                             <CollapsibleTrigger asChild>
                               <Button variant="ghost" className="flex w-full justify-between p-2 rounded-lg">
                                 <div className="flex items-center gap-2">
@@ -814,7 +814,7 @@ function App() {
                             </Badge>
                           </div>
                           
-                          <Collapsible defaultOpen={serverName !== 'other'}>
+                          <Collapsible defaultOpen={false}>
                             <CollapsibleTrigger asChild>
                               <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-2">
                                 <ChevronDown className="h-3 w-3" />
