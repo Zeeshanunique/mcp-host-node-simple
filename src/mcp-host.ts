@@ -2,6 +2,7 @@ import path from 'node:path';
 import { readMCPTransport } from './mcp-transport.js';
 import { experimental_createMCPClient } from 'ai';
 import logger from './utils/logger.js';
+import { type Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 
 export type MCPHostOptions = {
   mcpServerConfig: string;
@@ -10,6 +11,9 @@ export type MCPHostOptions = {
 export type MCPClient = Awaited<
   ReturnType<typeof experimental_createMCPClient>
 >;
+
+// Define the transport types needed for the client
+export type MCPClientTransport = Experimental_StdioMCPTransport | { type: string; url: string };
 
 export class MCPHost {
   #tools: Record<string, any>;
@@ -44,6 +48,10 @@ export class MCPHost {
         if ((transport as any).process) {
           this.#childProcesses[name] = (transport as any).process;
           logger.debug({ name, pid: (transport as any).process.pid }, '[MCPHost] Tracking child process');
+          
+          // Initialize server in the tool map
+          this.#serverToolMap[name] = [];
+          this.#initialDiscovery[name] = [];
         }
         
         clients.push(client);
@@ -57,6 +65,7 @@ export class MCPHost {
     logger.info({ count: clients.length }, '[MCPHost] Created clients successfully');
 
     // Load tools from each client, handling errors individually
+    let clientIndex = 0;
     for (const client of clients) {
       try {
         logger.debug('[MCPHost] Getting tools from client...');
@@ -64,7 +73,7 @@ export class MCPHost {
         logger.info({ tools: Object.keys(tools) }, '[MCPHost] Got tools');
 
         // Find which server this client corresponds to
-        const serverName = this.findServerNameForClient(client, transports);
+        const serverName = this.findServerNameByIndex(clientIndex, Object.keys(transports));
         if (serverName) {
           // Track the tools that come from this server
           this.#initialDiscovery[serverName] = Object.keys(tools);
@@ -87,8 +96,11 @@ export class MCPHost {
             this.#serverToolMap[serverName].push(name);
           }
         }
+        
+        clientIndex++;
       } catch (err) {
         logger.error({ err }, '[MCPHost] Error getting tools from client');
+        clientIndex++;
         // Continue with other clients
       }
     }
@@ -102,6 +114,24 @@ export class MCPHost {
       serverCount: Object.keys(this.#serverToolMap).length,
       mapping: this.#serverToolMap 
     }, '[MCPHost] Server-tool mapping established');
+  }
+  
+  // Helper method to find which server name corresponds to a client by index
+  private findServerNameByIndex(index: number, serverNames: string[]): string | null {
+    if (index >= 0 && index < serverNames.length) {
+      return serverNames[index];
+    }
+    return null;
+  }
+  
+  // Get the server-tool mapping established during initialization
+  async getServerToolMap(): Promise<Record<string, string[]>> {
+    return { ...this.#serverToolMap };
+  }
+  
+  // Get the initial discovery of tools by server during startup
+  async getInitialServerToolDiscovery(): Promise<Record<string, string[]>> {
+    return { ...this.#initialDiscovery };
   }
 
   async tools() {
@@ -221,7 +251,7 @@ export class MCPHost {
     }
     
     // Finally, try for substring matches, using the longest matching server name
-    let bestMatch = { server: null, length: 0 };
+    let bestMatch: { server: string | null, length: number } = { server: null, length: 0 };
     
     for (const server of knownServers) {
       if (toolName.includes(server) && server.length > bestMatch.length) {
@@ -327,30 +357,5 @@ export class MCPHost {
       return 'calculation';
     }
     return 'utility';
-  }
-
-  // Helper method to find which server name corresponds to a client
-  private findServerNameForClient(client: MCPClient, transports: Record<string, MCPClientTransport>): string | null {
-    for (const [name, transport] of Object.entries(transports)) {
-      try {
-        // If this is a StdioMCPTransport, we can try to match by the process
-        if ((transport as any).process && client.transport === transport) {
-          return name;
-        }
-      } catch (err) {
-        // Ignore errors during lookup
-      }
-    }
-    return null;
-  }
-  
-  // Get the server-tool mapping established during initialization
-  async getServerToolMap(): Promise<Record<string, string[]>> {
-    return { ...this.#serverToolMap };
-  }
-  
-  // Get the initial discovery of tools by server during startup
-  async getInitialServerToolDiscovery(): Promise<Record<string, string[]>> {
-    return { ...this.#initialDiscovery };
   }
 }
