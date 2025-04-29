@@ -86,16 +86,43 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 
 // Serve static files from frontend build in production
 if (config.NODE_ENV === 'production') {
-  const frontendBuildPath = path.resolve(__dirname, '../../frontend/build');
+  // Use process.cwd() to get the absolute path from the current working directory
+  const frontendBuildPath = path.resolve(process.cwd(), 'src/frontend/build');
+  
+  logger.info({ path: frontendBuildPath, exists: fs.existsSync(frontendBuildPath) }, '[Server] Frontend build path');
+  
   if (fs.existsSync(frontendBuildPath)) {
     logger.info({ path: frontendBuildPath }, '[Server] Serving static files from frontend build');
+    
+    // Serve static files with appropriate caching headers
     app.use(express.static(frontendBuildPath, {
       maxAge: '1d', // Cache static assets for 1 day
       etag: true,
       lastModified: true
     }));
+    
+    // Add catch-all route for SPA - this will serve index.html for any unmatched routes
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+      if (!req.path.startsWith('/api/')) {
+        const indexPath = path.join(frontendBuildPath, 'index.html');
+        logger.info({ path: req.path, indexPath, exists: fs.existsSync(indexPath) }, '[Server] Serving SPA index.html');
+        
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          logger.error({ indexPath }, '[Server] index.html not found');
+          res.status(404).send('Frontend not built properly. index.html not found.');
+        }
+      } else {
+        next();
+      }
+    });
   } else {
     logger.warn({ path: frontendBuildPath }, '[Server] Frontend build directory not found');
+    // Fallback route to inform about missing frontend
+    app.get('/', (_req: Request, res: Response) => {
+      res.status(404).send('Frontend build not found. Please run npm run build:frontend first.');
+    });
   }
 }
 
