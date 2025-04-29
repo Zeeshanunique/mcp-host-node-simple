@@ -14,10 +14,14 @@ export type MCPClient = Awaited<
 export class MCPHost {
   #tools: Record<string, any>;
   #childProcesses: Record<string, any>;
+  #serverToolMap: Record<string, string[]>;
+  #initialDiscovery: Record<string, string[]>;
 
   constructor() {
     this.#tools = {};
     this.#childProcesses = {};
+    this.#serverToolMap = {};
+    this.#initialDiscovery = {};
   }
 
   async start(options: MCPHostOptions) {
@@ -59,12 +63,29 @@ export class MCPHost {
         const tools = await client.tools();
         logger.info({ tools: Object.keys(tools) }, '[MCPHost] Got tools');
 
+        // Find which server this client corresponds to
+        const serverName = this.findServerNameForClient(client, transports);
+        if (serverName) {
+          // Track the tools that come from this server
+          this.#initialDiscovery[serverName] = Object.keys(tools);
+          
+          // Also update the server-tool map
+          if (!this.#serverToolMap[serverName]) {
+            this.#serverToolMap[serverName] = [];
+          }
+        }
+
         for (const [name, tool] of Object.entries(tools)) {
           logger.debug({ name }, '[MCPHost] Adding tool');
           this.#tools = {
             ...this.#tools,
             [name]: tool,
           };
+          
+          // Map tool to server if we know which server it came from
+          if (serverName) {
+            this.#serverToolMap[serverName].push(name);
+          }
         }
       } catch (err) {
         logger.error({ err }, '[MCPHost] Error getting tools from client');
@@ -75,6 +96,12 @@ export class MCPHost {
     const toolsValid = await this.validateTools();
     logger.info({ valid: toolsValid }, '[MCPHost] Tool validation');
     logger.info({ tools: await this.toolList() }, '[MCPHost] Host started with');
+    
+    // Log the server-tool mapping
+    logger.info({ 
+      serverCount: Object.keys(this.#serverToolMap).length,
+      mapping: this.#serverToolMap 
+    }, '[MCPHost] Server-tool mapping established');
   }
 
   async tools() {
@@ -300,5 +327,30 @@ export class MCPHost {
       return 'calculation';
     }
     return 'utility';
+  }
+
+  // Helper method to find which server name corresponds to a client
+  private findServerNameForClient(client: MCPClient, transports: Record<string, MCPClientTransport>): string | null {
+    for (const [name, transport] of Object.entries(transports)) {
+      try {
+        // If this is a StdioMCPTransport, we can try to match by the process
+        if ((transport as any).process && client.transport === transport) {
+          return name;
+        }
+      } catch (err) {
+        // Ignore errors during lookup
+      }
+    }
+    return null;
+  }
+  
+  // Get the server-tool mapping established during initialization
+  async getServerToolMap(): Promise<Record<string, string[]>> {
+    return { ...this.#serverToolMap };
+  }
+  
+  // Get the initial discovery of tools by server during startup
+  async getInitialServerToolDiscovery(): Promise<Record<string, string[]>> {
+    return { ...this.#initialDiscovery };
   }
 }

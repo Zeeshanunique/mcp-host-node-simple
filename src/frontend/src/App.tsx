@@ -185,114 +185,74 @@ function App() {
       // Clear existing servers to show refreshing state
       setServers({});
       
-      // First, try to fetch servers directly from a dedicated endpoint
-      try {
-        const serversResponse = await fetch(`${apiUrl}/api/servers`);
-        if (serversResponse.ok) {
-          const serversData: ServerResponse = await serversResponse.json();
-          setServers(serversData.servers);
-          
-          // Log detailed server information
-          console.log("Fetched servers from API:", serversData.servers);
-          console.log(`Found ${Object.keys(serversData.servers).length} servers with ${Object.values(serversData.servers).flat().length} total tools`);
-          
-          // Show success toast
-          toast({
-            title: "Servers Refreshed",
-            description: `Successfully loaded ${Object.keys(serversData.servers).length} servers with ${Object.values(serversData.servers).flat().length} tools`
-          });
-          
-          return;
-        }
-      } catch (error) {
-        console.warn('Direct server fetch failed, falling back to tool grouping method:', error);
+      // Fetch servers from the dedicated endpoint
+      const serversResponse = await fetch(`${apiUrl}/api/servers`);
+      if (serversResponse.ok) {
+        const serversData: ServerResponse = await serversResponse.json();
+        
+        // Sort the tools within each server alphabetically for better display
+        const sortedServers: Record<string, string[]> = {};
+        Object.entries(serversData.servers).forEach(([serverName, tools]) => {
+          sortedServers[serverName] = [...tools].sort();
+        });
+        
+        setServers(sortedServers);
+        
+        // Log detailed server information
+        console.log("Fetched servers from API:", sortedServers);
+        console.log(`Found ${Object.keys(sortedServers).length} servers with ${Object.values(sortedServers).flat().length} total tools`);
+        
+        // Show success toast
+        toast({
+          title: "Servers Refreshed",
+          description: `Successfully loaded ${Object.keys(sortedServers).length} servers with ${Object.values(sortedServers).flat().length} tools`
+        });
+        
+        return;
       }
       
-      // Fallback: Use the tools list and organize them by server name patterns
+      // If the servers endpoint failed, fall back to the tools endpoint
+      toast({
+        variant: "default",
+        title: "Server Mapping Unavailable",
+        description: "Using fallback method to group tools by pattern matching"
+      });
+      
+      // Fallback method - fetch all tools
       const response = await fetch(`${apiUrl}/api/tools`);
       if (!response.ok) {
-        throw new Error('Failed to fetch tools for server grouping');
+        throw new Error('Failed to fetch tools');
       }
       
       const data = await response.json();
       const allTools = data.tools || [];
       
-      // Define server categories based on our knowledge of the mcp-servers.json
-      const serverGroups: Record<string, string[]> = {};
+      // Show error toast if no tools were found
+      if (allTools.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Tools Available",
+          description: "No tools were found on the server."
+        });
+        return;
+      }
       
-      // Known server names from mcp-servers.json - include ALL 13
-      const knownServers = [
-        'websearch', 'research', 'weather', 'summarize', 'webscrap',
-        'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
-        'fastmcp_test', 'playwright', 'supabase', 'airbnb'
-      ];
+      // Group all tools into a single "all tools" category since we can't determine server mapping
+      const fallbackServers: Record<string, string[]> = {
+        "all_tools": allTools.sort()
+      };
       
-      // Initialize server groups
-      knownServers.forEach(server => {
-        serverGroups[server] = [];
-      });
-      
-      // Enhanced pattern matching
-      allTools.forEach((tool: string) => {
-        let assigned = false;
-        
-        // First, check for exact matches or direct prefixes
-        for (const server of knownServers) {
-          if (
-            tool === server || 
-            tool.startsWith(`${server}_`) || 
-            tool.endsWith(`_${server}`) || 
-            tool.includes(`_${server}_`)
-          ) {
-            serverGroups[server].push(tool);
-            assigned = true;
-            break;
-          }
-        }
-        
-        // If not assigned, try substring matching using the longest matching server name
-        if (!assigned) {
-          let bestMatch = { server: null as string | null, length: 0 };
-          
-          for (const server of knownServers) {
-            if (tool.includes(server) && server.length > bestMatch.length) {
-              bestMatch = { server, length: server.length };
-            }
-          }
-          
-          if (bestMatch.server) {
-            serverGroups[bestMatch.server].push(tool);
-            assigned = true;
-          }
-        }
-        
-        // If still no server match found, put in "other" category
-        if (!assigned) {
-          if (!serverGroups['other']) {
-            serverGroups['other'] = [];
-          }
-          serverGroups['other'].push(tool);
-        }
-      });
-      
-      // Remove empty server groups
-      Object.keys(serverGroups).forEach(server => {
-        if (serverGroups[server].length === 0) {
-          delete serverGroups[server];
-        }
-      });
-      
-      setServers(serverGroups);
-      console.log("Grouped tools by servers:", serverGroups);
+      setServers(fallbackServers);
+      console.log("Using fallback server grouping:", fallbackServers);
       
       // Show toast notification
       toast({
-        title: "Servers Refreshed",
-        description: `Grouped ${allTools.length} tools into ${Object.keys(serverGroups).length} servers using fallback method`
+        title: "Fallback Grouping Applied",
+        description: `Showing all ${allTools.length} tools in a single group`
       });
       
     } catch (error) {
-      console.error('Error organizing tools by servers:', error);
+      console.error('Error fetching servers and tools:', error);
       // Show error toast
       toast({
         variant: "destructive",

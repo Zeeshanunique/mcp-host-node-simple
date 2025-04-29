@@ -487,115 +487,86 @@ app.get('/api/tools', (req: Request, res: Response) => {
 app.get('/api/servers', (req: Request, res: Response) => {
   (async () => {
   try {
+    // Get the direct server-tool mappings from the MCPHost
+    const serverToolMap = await host.getServerToolMap();
+    
+    if (Object.keys(serverToolMap).length > 0) {
+      logger.info({ 
+        serverCount: Object.keys(serverToolMap).length,
+        servers: Object.keys(serverToolMap),
+        toolCount: Object.values(serverToolMap).flat().length,
+        reqId: (req as any).reqId 
+      }, 'Returning servers with tools from direct mapping');
+      
+      return res.json({ servers: serverToolMap });
+    }
+    
+    // Fallback if the direct mapping isn't available
     const mcpConfigPath = path.resolve(process.cwd(), config.MCP_CONFIG_PATH);
-    // Read the server configuration file directly
     const configContent = await fs.promises.readFile(mcpConfigPath, 'utf-8');
     const mcpConfig = JSON.parse(configContent);
     
-    // Get the map of tools grouped by server
+    // Get all available tools
     const toolList = await host.toolList();
+    
+    // Initialize the server map from the config file
     const serverMap: Record<string, string[]> = {};
     
-    // Initialize servers from config - ensure we have entries for ALL 13 servers
     if (mcpConfig.mcpServers) {
       Object.keys(mcpConfig.mcpServers).forEach(serverName => {
         serverMap[serverName] = [];
       });
-      
-      logger.info({ 
-        serverCount: Object.keys(serverMap).length,
-        servers: Object.keys(serverMap)
-      }, '[Server] Initialized server map from config');
     }
     
-    // Try to use the enhanced metadata approach first
-    let metadataSuccess = false;
+    // Get the actual server-tool mappings that were discovered during initialization
+    const knownServerTools = await host.getInitialServerToolDiscovery();
     
-    try {
-      // Use the toolsWithMetadata method to get server information
-      const enhancedTools = await host.toolsWithMetadata();
-      
-      // Process enhanced tools with metadata
-      for (const [toolName, toolInfo] of Object.entries(enhancedTools)) {
-        const serverName = (toolInfo as any).metadata?.serverName || null;
-        
-        if (serverName && serverMap[serverName]) {
-          serverMap[serverName].push(toolName);
-          metadataSuccess = true;
+    if (Object.keys(knownServerTools).length > 0) {
+      // Use the tools that were discovered during server initialization
+      for (const [serverName, tools] of Object.entries(knownServerTools)) {
+        if (Array.isArray(tools) && tools.length > 0) {
+          serverMap[serverName] = tools;
         }
       }
       
       logger.info({ 
-        metadataSuccess,
-        toolCount: toolList.length,
-        mappedToolCount: Object.values(serverMap).flat().length 
-      }, '[Server] Tool mapping with metadata');
-    } catch (error) {
-      logger.warn({ error, reqId: (req as any).reqId }, 'Error using metadata approach');
-      metadataSuccess = false;
+        serverCount: Object.keys(serverMap).length,
+        servers: Object.keys(serverMap),
+        toolCount: Object.values(serverMap).flat().length,
+        reqId: (req as any).reqId 
+      }, 'Returning servers with tools from initialization discovery');
+      
+      return res.json({ servers: serverMap });
     }
     
-    // If the metadata approach didn't map all tools, use direct matching as fallback
-    if (!metadataSuccess || Object.values(serverMap).flat().length < toolList.length) {
-      logger.info('[Server] Using direct pattern matching for remaining tools');
+    // Last resort fallback: use pattern matching
+    logger.warn({ reqId: (req as any).reqId }, 'No direct server-tool mappings available, using pattern matching');
+    
+    // Create regexps for more accurate matching
+    const serverPatterns = Object.keys(serverMap).map(name => ({
+      name,
+      regex: new RegExp(`^${name}$|^${name}_|_${name}_|_${name}$|[.-]${name}$|^${name}[.-]`)
+    }));
+    
+    // Map tools to servers
+    for (const toolName of toolList) {
+      let assigned = false;
       
-      // Create regexps for more accurate matching
-      const serverPatterns = Object.keys(serverMap).map(name => ({
-        name,
-        // Convert server names to regex patterns that match the name exactly, as a prefix with underscore,
-        // or anywhere in the tool name
-        regex: new RegExp(`^${name}$|^${name}_|_${name}_|_${name}$|[.-]${name}$|^${name}[.-]`)
-      }));
-      
-      // Find unmapped tools
-      const mappedTools = new Set(Object.values(serverMap).flat());
-      const unmappedTools = toolList.filter(tool => !mappedTools.has(tool));
-      
-      logger.info({ 
-        totalTools: toolList.length,
-        mappedTools: mappedTools.size,
-        unmappedTools: unmappedTools.length
-      }, '[Server] Tools to map with direct matching');
-      
-      // Try to map remaining tools
-      for (const toolName of unmappedTools) {
-        let assigned = false;
-        
-        // First try exact matches or strong pattern matches
-        for (const { name, regex } of serverPatterns) {
-          if (regex.test(toolName) || toolName.includes(name)) {
-            serverMap[name].push(toolName);
-            assigned = true;
-            break;
-          }
+      // First try exact matches or strong pattern matches
+      for (const { name, regex } of serverPatterns) {
+        if (regex.test(toolName) || toolName.includes(name)) {
+          serverMap[name].push(toolName);
+          assigned = true;
+          break;
         }
-        
-        // If still not assigned, try looser matching for remaining tools
-        if (!assigned) {
-          // Try to find the best matching server by looking for the longest substring match
-          let bestMatch = { server: 'other', matchLength: 0 };
-          
-          for (const serverName of Object.keys(serverMap)) {
-            // Skip 'other' as it's our fallback
-            if (serverName === 'other') continue;
-            
-            // Check if tool name contains server name as a substring
-            if (toolName.includes(serverName) && serverName.length > bestMatch.matchLength) {
-              bestMatch = { server: serverName, matchLength: serverName.length };
-            }
-          }
-          
-          // Assign to best matching server or 'other' if no match
-          if (bestMatch.matchLength > 0) {
-            serverMap[bestMatch.server].push(toolName);
-          } else {
-            // If no match found, put in "other" category
-            if (!serverMap['other']) {
-              serverMap['other'] = [];
-            }
-            serverMap['other'].push(toolName);
-          }
+      }
+      
+      // If still not assigned, use "other" category
+      if (!assigned) {
+        if (!serverMap['other']) {
+          serverMap['other'] = [];
         }
+        serverMap['other'].push(toolName);
       }
     }
     
@@ -611,7 +582,7 @@ app.get('/api/servers', (req: Request, res: Response) => {
       servers: Object.keys(serverMap),
       toolCount: Object.values(serverMap).flat().length,
       reqId: (req as any).reqId 
-    }, 'Returning servers with tools');
+    }, 'Returning servers with tools from pattern matching');
     
     res.json({ servers: serverMap });
   } catch (error) {
