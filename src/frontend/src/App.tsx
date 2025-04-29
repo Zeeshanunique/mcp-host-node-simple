@@ -786,7 +786,7 @@ function App() {
                     </div>
                     
                     {/* Organize servers by category */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
                       {Object.entries(servers)
                         .sort(([nameA], [nameB]) => {
                           // Sort "other" to the end
@@ -798,31 +798,31 @@ function App() {
                         .map(([serverName, serverTools]) => (
                         <div 
                           key={serverName} 
-                          className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
-                            serverName === 'other' ? 'lg:col-span-2 bg-muted/30' : ''
+                          className={`border rounded-lg p-2 hover:shadow-md transition-shadow ${
+                            serverName === 'other' ? 'lg:col-span-3 bg-muted/30' : ''
                           }`}
                         >
-                          <div className="flex justify-between items-start mb-3">
-                            <h3 className="text-lg font-semibold flex items-center gap-2">
-                              <Cpu className="h-4 w-4 text-primary" />
+                          <div className="flex justify-between items-start mb-1">
+                            <h3 className="text-base font-semibold flex items-center gap-1">
+                              <Cpu className="h-3 w-3 text-primary" />
                               {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
-                              <Badge variant="secondary" className="ml-2">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
+                              <Badge variant="secondary" className="ml-1 text-xs">{serverTools.length}</Badge>
                             </h3>
-                            <Badge variant="outline" className="text-xs">
-                              <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                            <Badge variant="outline" className="text-xs py-0 px-1">
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500 mr-1"></span>
                               Active
                             </Badge>
                           </div>
                           
                           <Collapsible defaultOpen={false}>
                             <CollapsibleTrigger asChild>
-                              <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-2">
+                              <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-1 h-6 p-0 text-xs">
                                 <ChevronDown className="h-3 w-3" />
                                 {serverName === 'other' ? 'Show Miscellaneous Tools' : 'Tool Details'}
                               </Button>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-1 mt-1">
                                 {serverTools
                                   .sort((a, b) => a.localeCompare(b)) // Sort tools alphabetically
                                   .map(tool => {
@@ -830,28 +830,28 @@ function App() {
                                   return (
                                     <Card 
                                       key={tool} 
-                                      className="cursor-pointer transition-all hover:shadow-md"
+                                      className="cursor-pointer transition-all hover:shadow-sm"
                                       onClick={() => handleToolSelect(tool)}
                                     >
-                                      <CardHeader className="py-2 px-3">
-                                        <CardTitle className="text-sm flex items-center gap-2">
+                                      <CardHeader className="py-1 px-2">
+                                        <CardTitle className="text-xs flex items-center gap-1">
                                           <Code className="h-3 w-3 text-primary" />
                                           {toolInfo.name}
                                         </CardTitle>
                                       </CardHeader>
-                                      <CardContent className="py-1 px-3">
-                                        <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
-                                        <div className="mt-2">
+                                      <CardContent className="py-1 px-2">
+                                        <p className="text-xs text-muted-foreground line-clamp-1">{toolInfo.description}</p>
+                                        <div className="mt-1">
                                           <Button 
                                             variant="secondary" 
                                             size="sm" 
-                                            className="w-full text-xs"
+                                            className="w-full text-xs h-6"
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               handleToolSelect(tool);
                                             }}
                                           >
-                                            Use Tool
+                                            Use
                                           </Button>
                                         </div>
                                       </CardContent>
@@ -862,21 +862,21 @@ function App() {
                             </CollapsibleContent>
                           </Collapsible>
                           
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {serverTools.slice(0, 5).map(tool => {
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {serverTools.slice(0, 3).map(tool => {
                               return (
                                 <Badge 
                                   key={tool}
                                   variant="outline" 
-                                  className="cursor-pointer hover:bg-primary/10"
+                                  className="cursor-pointer hover:bg-primary/10 text-xs py-0"
                                   onClick={() => handleToolSelect(tool)}
                                 >
                                   {tool}
                                 </Badge>
                               );
                             })}
-                            {serverTools.length > 5 && (
-                              <Badge variant="outline">+{serverTools.length - 5} more</Badge>
+                            {serverTools.length > 3 && (
+                              <Badge variant="outline" className="text-xs py-0">+{serverTools.length - 3} more</Badge>
                             )}
                           </div>
                         </div>
