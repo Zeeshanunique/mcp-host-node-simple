@@ -163,20 +163,46 @@ export class MCPHost {
   
   // Helper method to infer server name from tool name
   private inferServerFromToolName(toolName: string): string | null {
-    // Common prefixes that indicate a server
+    // Define all known servers from mcp-servers.json
     const knownServers = [
       'websearch', 'research', 'weather', 'summarize', 'webscrap',
       'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
       'fastmcp_test', 'playwright', 'supabase', 'airbnb'
     ];
     
+    // First check for exact matches or direct prefixes
     for (const server of knownServers) {
-      if (toolName === server || toolName.startsWith(`${server}_`) || toolName.includes(server)) {
+      if (
+        toolName === server || 
+        toolName.startsWith(`${server}_`) || 
+        toolName.endsWith(`_${server}`)
+      ) {
         return server;
       }
     }
     
-    return null;
+    // Next try to find embedded server names with word boundaries
+    for (const server of knownServers) {
+      // Check for embedded server name with word boundaries (underscore, hyphen, dot)
+      if (
+        toolName.includes(`_${server}_`) || 
+        toolName.includes(`-${server}-`) ||
+        toolName.includes(`.${server}.`)
+      ) {
+        return server;
+      }
+    }
+    
+    // Finally, try for substring matches, using the longest matching server name
+    let bestMatch = { server: null, length: 0 };
+    
+    for (const server of knownServers) {
+      if (toolName.includes(server) && server.length > bestMatch.length) {
+        bestMatch = { server, length: server.length };
+      }
+    }
+    
+    return bestMatch.server;
   }
 
   // Add timeout handling for subprocess tools
