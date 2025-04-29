@@ -5,6 +5,7 @@ interface KeyboardShortcutsProps {
   onClearChat?: () => void;
   onSwitchToTools?: () => void;
   onSwitchToChat?: () => void;
+  onSwitchToServers?: () => void;
   isInputEmpty: boolean;
 }
 
@@ -13,6 +14,7 @@ export function KeyboardShortcuts({
   onClearChat,
   onSwitchToTools,
   onSwitchToChat,
+  onSwitchToServers,
   isInputEmpty
 }: KeyboardShortcutsProps) {
   useEffect(() => {
@@ -45,6 +47,12 @@ export function KeyboardShortcuts({
         e.preventDefault();
       }
 
+      // Alt+S to switch to servers tab
+      if (e.altKey && e.key === 's' && onSwitchToServers) {
+        onSwitchToServers();
+        e.preventDefault();
+      }
+
       // Alt+X to clear chat
       if (e.altKey && e.key === 'x' && onClearChat) {
         onClearChat();
@@ -56,7 +64,7 @@ export function KeyboardShortcuts({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onSend, onClearChat, onSwitchToTools, onSwitchToChat, isInputEmpty]);
+  }, [onSend, onClearChat, onSwitchToTools, onSwitchToChat, onSwitchToServers, isInputEmpty]);
 
   return null;
 }

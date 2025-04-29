@@ -71,7 +71,7 @@ function App() {
   const [currentProvider, setCurrentProvider] = useState<string>('anthropic');
   const [availableProviders, setAvailableProviders] = useState<string[]>(['anthropic', 'google']);
   
-  // Add servers state
+  // Add servers state - maps server names to their tools
   const [servers, setServers] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
@@ -176,45 +176,30 @@ function App() {
     }
   };
 
-  // Fetch servers and their tools
+  // Fetch servers and their associated tools
   const fetchServers = async () => {
     try {
       // Get the API URL from environment variables
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
       
-      // First create a simple mock servers endpoint
-      const mockServerEndpoint = 'http://localhost:7565/api/servers';
-      
-      // Try to fetch from mock server first
-      try {
-        const response = await fetch(mockServerEndpoint);
-        if (response.ok) {
-          const data: ServerResponse = await response.json();
-          setServers(data.servers || {});
-          console.log("Loaded servers from mock API:", data.servers);
-          return;
-        }
-      } catch (error) {
-        console.log("Mock server not available, generating server data from tools");
-      }
-      
-      // If mock server fails, generate server data from tools
-      // Fetch tools first
-      const toolsResponse = await fetch(`${apiUrl}/api/tools`);
-      if (!toolsResponse.ok) {
+      // Since we don't have a direct API to get servers,
+      // we'll use the tools list and organize them by server name patterns
+      const response = await fetch(`${apiUrl}/api/tools`);
+      if (!response.ok) {
         throw new Error('Failed to fetch tools for server grouping');
       }
       
-      const toolsData: ToolsResponse = await toolsResponse.json();
-      const allTools = toolsData.tools || [];
+      const data = await response.json();
+      const allTools = data.tools || [];
       
-      // Simple categorization of tools by name patterns
+      // Define server categories based on our knowledge of the mcp-servers.json
       const serverGroups: Record<string, string[]> = {};
       
-      // Define known server categories
+      // Known server names from mcp-servers.json
       const knownServers = [
         'websearch', 'research', 'weather', 'summarize', 'webscrap',
-        'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 'fastmcp_test', 'playwright', 'supabase'
+        'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
+        'fastmcp_test', 'playwright', 'supabase', 'airbnb'
       ];
       
       // Initialize server groups
@@ -222,11 +207,11 @@ function App() {
         serverGroups[server] = [];
       });
       
-      // Assign tools to servers
-      allTools.forEach(tool => {
+      // Assign tools to servers based on name patterns
+      allTools.forEach((tool: string) => {
         let assigned = false;
         
-        // Check if the tool name matches or contains a server name
+        // Try to match tool to a server
         for (const server of knownServers) {
           if (tool === server || tool.startsWith(server + '_') || tool.includes(server)) {
             serverGroups[server].push(tool);
@@ -235,7 +220,7 @@ function App() {
           }
         }
         
-        // If no match found, put in "other" category
+        // If no server match found, put in "other" category
         if (!assigned) {
           if (!serverGroups['other']) {
             serverGroups['other'] = [];
@@ -252,10 +237,11 @@ function App() {
       });
       
       setServers(serverGroups);
-      console.log("Generated server groups from tools:", serverGroups);
+      console.log("Grouped tools by servers:", serverGroups);
       
     } catch (error) {
-      console.error('Error fetching or generating servers data:', error);
+      console.error('Error organizing tools by servers:', error);
+      // Don't show an error toast for this, as it's not critical
     }
   };
 
@@ -436,6 +422,7 @@ function App() {
         onClearChat={handleClearChat}
         onSwitchToTools={() => setActiveTab('tools')}
         onSwitchToChat={() => setActiveTab('chat')}
+        onSwitchToServers={() => setActiveTab('servers')}
         isInputEmpty={!message.trim()}
       />
 
@@ -452,6 +439,15 @@ function App() {
               {tools.length > 0 && (
                 <Badge variant="secondary" className="ml-1">
                   {tools.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="servers" className="flex items-center gap-2 flex-1 sm:flex-initial">
+              <Cpu className="h-4 w-4" />
+              Servers
+              {Object.keys(servers).length > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {Object.keys(servers).length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -725,6 +721,68 @@ function App() {
                         </Card>
                       );
                     })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="servers" className="flex-1">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="h-5 w-5 text-primary" />
+                  Available Servers
+                </CardTitle>
+                <CardDescription>Tools grouped by their server origins</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {Object.keys(servers).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Cpu className="h-12 w-12 mb-4 text-muted" />
+                    <h3 className="text-lg font-medium mb-2">No Servers Available</h3>
+                    <p className="text-center max-w-md mb-4">The MCP host is not currently connected to any servers. Check your connection or try again later.</p>
+                    <Alert variant="info" className="max-w-md">
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>About MCP Servers</AlertTitle>
+                      <AlertDescription>
+                        Each server provides one or more tools that can be used by the LLM. Servers run as separate processes and communicate with the host using the Model Context Protocol.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {Object.entries(servers).map(([serverName, serverTools]) => (
+                      <div key={serverName} className="border rounded-lg p-4">
+                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                          <Cpu className="h-4 w-4 text-primary" />
+                          {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
+                          <Badge variant="secondary">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                          {serverTools.map(tool => {
+                            const toolInfo = getToolInfo(tool);
+                            return (
+                              <Card 
+                                key={tool} 
+                                className="cursor-pointer transition-all hover:shadow-md"
+                                onClick={() => handleToolSelect(tool)}
+                              >
+                                <CardHeader className="py-2 px-3">
+                                  <CardTitle className="text-sm flex items-center gap-2">
+                                    <Code className="h-3 w-3 text-primary" />
+                                    {toolInfo.name}
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-1 px-3">
+                                  <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
