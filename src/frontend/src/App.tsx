@@ -47,6 +47,7 @@ interface ToolInfo {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  id?: string;  // Adding optional id property to fix linter error
 }
 
 // Add a new interface for provider selection
@@ -64,6 +65,8 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('chat');
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  const [useAllServerTools, setUseAllServerTools] = useState<boolean>(false);
   const chatEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
   
@@ -302,35 +305,33 @@ function App() {
   }, []);
 
   // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || isLoading) return;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!message.trim()) return;
 
-    // Create updated chat history with the new user message
-    const newUserMessage: ChatMessage = { role: 'user', content: message };
-    const updatedChatHistory: ChatMessage[] = [...chatHistory, newUserMessage];
-    
-    // Update state with new chat history
-    setChatHistory(updatedChatHistory);
-    
-    // Clear previous response and error
-    setResponse(null);
-    setError(null);
+    const newUserMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: message,
+    };
+
+    setChatHistory((prev) => [...prev, newUserMessage]);
+    setMessage("");
     setIsLoading(true);
 
     try {
       // Get the API URL from environment variables
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
-      
-      // Send the request to the backend with the full API URL
       const response = await fetch(`${apiUrl}/api/chat`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
-          history: updatedChatHistory,
-          provider: currentProvider // Include the current provider
+        body: JSON.stringify({
+          history: [{ role: 'user', content: message }],
+          selectedTool: selectedTool,
+          selectedServer: selectedServer,
+          useAllServerTools: useAllServerTools,
         }),
       });
 
@@ -354,9 +355,6 @@ function App() {
         const safeResponse: string = data.finalResponse;
         setChatHistory(prev => [...prev, { role: 'assistant', content: safeResponse }]);
       }
-
-      // Clear the message input
-      setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again later.');
@@ -365,16 +363,31 @@ function App() {
     }
   };
 
-  const handleToolSelect = (tool: string) => {
-    setSelectedTool(tool);
+  // Handle tool selection
+  const handleToolSelect = (toolId: string) => {
+    setSelectedTool(toolId);
+    setUseAllServerTools(false);
     
-    // Generate a template message based on the selected tool
-    const toolInfo = getToolInfo(tool);
-    setMessage(toolInfo.example);
-    toast({
-      title: `Tool Selected: ${toolInfo.name}`,
-      description: "Example prompt added to message input."
-    });
+    // Get example prompt from the tool info
+    const toolInfo = getToolInfo(toolId);
+    if (toolInfo && toolInfo.example) {
+      setMessage(toolInfo.example);
+    }
+    
+    // Automatically switch to chat tab
+    setActiveTab('chat');
+  };
+  
+  // Handle server selection to use all its tools
+  const handleServerSelect = (serverId: string) => {
+    setSelectedServer(serverId);
+    setSelectedTool(null);
+    setUseAllServerTools(true);
+    
+    // Optional: Set a default prompt for the selected server
+    setMessage(`Use all tools from server "${serverId}" to help me with the following:`);
+    
+    // Automatically switch to chat tab
     setActiveTab('chat');
   };
 
@@ -669,6 +682,12 @@ function App() {
                             Using: {selectedTool}
                           </Badge>
                         )}
+                        {selectedServer && (
+                          <Badge variant="outline" className="mr-2 bg-primary/10">
+                            <Cpu className="h-3 w-3 mr-1" />
+                            Server: {selectedServer.replace(/_/g, ' ')}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -808,10 +827,20 @@ function App() {
                               {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
                               <Badge variant="secondary" className="ml-2">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
                             </h3>
-                            <Badge variant="outline" className="text-xs">
-                              <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
-                              Active
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                                Active
+                              </Badge>
+                              <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                className="text-xs"
+                                onClick={() => handleServerSelect(serverName)}
+                              >
+                                Use All Tools
+                              </Button>
+                            </div>
                           </div>
                           
                           <Collapsible defaultOpen={false}>
