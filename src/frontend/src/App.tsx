@@ -182,13 +182,26 @@ function App() {
       // Get the API URL from environment variables
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
       
+      // Clear existing servers to show refreshing state
+      setServers({});
+      
       // First, try to fetch servers directly from a dedicated endpoint
       try {
         const serversResponse = await fetch(`${apiUrl}/api/servers`);
         if (serversResponse.ok) {
           const serversData: ServerResponse = await serversResponse.json();
           setServers(serversData.servers);
+          
+          // Log detailed server information
           console.log("Fetched servers from API:", serversData.servers);
+          console.log(`Found ${Object.keys(serversData.servers).length} servers with ${Object.values(serversData.servers).flat().length} total tools`);
+          
+          // Show success toast
+          toast({
+            title: "Servers Refreshed",
+            description: `Successfully loaded ${Object.keys(serversData.servers).length} servers with ${Object.values(serversData.servers).flat().length} tools`
+          });
+          
           return;
         }
       } catch (error) {
@@ -207,7 +220,7 @@ function App() {
       // Define server categories based on our knowledge of the mcp-servers.json
       const serverGroups: Record<string, string[]> = {};
       
-      // Known server names from mcp-servers.json
+      // Known server names from mcp-servers.json - include ALL 13
       const knownServers = [
         'websearch', 'research', 'weather', 'summarize', 'webscrap',
         'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
@@ -219,20 +232,41 @@ function App() {
         serverGroups[server] = [];
       });
       
-      // Assign tools to servers based on name patterns
+      // Enhanced pattern matching
       allTools.forEach((tool: string) => {
         let assigned = false;
         
-        // Try to match tool to a server
+        // First, check for exact matches or direct prefixes
         for (const server of knownServers) {
-          if (tool === server || tool.startsWith(server + '_') || tool.includes(server)) {
+          if (
+            tool === server || 
+            tool.startsWith(`${server}_`) || 
+            tool.endsWith(`_${server}`) || 
+            tool.includes(`_${server}_`)
+          ) {
             serverGroups[server].push(tool);
             assigned = true;
             break;
           }
         }
         
-        // If no server match found, put in "other" category
+        // If not assigned, try substring matching using the longest matching server name
+        if (!assigned) {
+          let bestMatch = { server: null as string | null, length: 0 };
+          
+          for (const server of knownServers) {
+            if (tool.includes(server) && server.length > bestMatch.length) {
+              bestMatch = { server, length: server.length };
+            }
+          }
+          
+          if (bestMatch.server) {
+            serverGroups[bestMatch.server].push(tool);
+            assigned = true;
+          }
+        }
+        
+        // If still no server match found, put in "other" category
         if (!assigned) {
           if (!serverGroups['other']) {
             serverGroups['other'] = [];
@@ -251,9 +285,20 @@ function App() {
       setServers(serverGroups);
       console.log("Grouped tools by servers:", serverGroups);
       
+      // Show toast notification
+      toast({
+        title: "Servers Refreshed",
+        description: `Grouped ${allTools.length} tools into ${Object.keys(serverGroups).length} servers using fallback method`
+      });
+      
     } catch (error) {
       console.error('Error organizing tools by servers:', error);
-      // Don't show an error toast for this, as it's not critical
+      // Show error toast
+      toast({
+        variant: "destructive",
+        title: "Server Refresh Failed",
+        description: "Unable to load servers. Check console for details."
+      });
     }
   };
 
@@ -780,85 +825,103 @@ function App() {
                       </Button>
                     </div>
                     
-                    {Object.entries(servers).map(([serverName, serverTools]) => (
-                      <div key={serverName} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-3">
-                          <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Cpu className="h-4 w-4 text-primary" />
-                            {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
-                            <Badge variant="secondary" className="ml-2">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
-                          </h3>
-                          <Badge variant="outline" className="text-xs">
-                            <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
-                            Active
-                          </Badge>
+                    {/* Organize servers by category */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {Object.entries(servers)
+                        .sort(([nameA], [nameB]) => {
+                          // Sort "other" to the end
+                          if (nameA === 'other') return 1;
+                          if (nameB === 'other') return -1;
+                          // Then sort by number of tools (descending)
+                          return servers[nameB].length - servers[nameA].length;
+                        })
+                        .map(([serverName, serverTools]) => (
+                        <div 
+                          key={serverName} 
+                          className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                            serverName === 'other' ? 'lg:col-span-2 bg-muted/30' : ''
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              <Cpu className="h-4 w-4 text-primary" />
+                              {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
+                              <Badge variant="secondary" className="ml-2">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
+                            </h3>
+                            <Badge variant="outline" className="text-xs">
+                              <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                              Active
+                            </Badge>
+                          </div>
+                          
+                          <Collapsible defaultOpen={serverName !== 'other'}>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-2">
+                                <ChevronDown className="h-3 w-3" />
+                                {serverName === 'other' ? 'Show Miscellaneous Tools' : 'Tool Details'}
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                                {serverTools
+                                  .sort((a, b) => a.localeCompare(b)) // Sort tools alphabetically
+                                  .map(tool => {
+                                  const toolInfo = getToolInfo(tool);
+                                  return (
+                                    <Card 
+                                      key={tool} 
+                                      className="cursor-pointer transition-all hover:shadow-md"
+                                      onClick={() => handleToolSelect(tool)}
+                                    >
+                                      <CardHeader className="py-2 px-3">
+                                        <CardTitle className="text-sm flex items-center gap-2">
+                                          <Code className="h-3 w-3 text-primary" />
+                                          {toolInfo.name}
+                                        </CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="py-1 px-3">
+                                        <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
+                                        <div className="mt-2">
+                                          <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            className="w-full text-xs"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleToolSelect(tool);
+                                            }}
+                                          >
+                                            Use Tool
+                                          </Button>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                          
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {serverTools.slice(0, 5).map(tool => {
+                              return (
+                                <Badge 
+                                  key={tool}
+                                  variant="outline" 
+                                  className="cursor-pointer hover:bg-primary/10"
+                                  onClick={() => handleToolSelect(tool)}
+                                >
+                                  {tool}
+                                </Badge>
+                              );
+                            })}
+                            {serverTools.length > 5 && (
+                              <Badge variant="outline">+{serverTools.length - 5} more</Badge>
+                            )}
+                          </div>
                         </div>
-                        
-                        <Collapsible>
-                          <CollapsibleTrigger asChild>
-                            <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-2">
-                              <ChevronDown className="h-3 w-3" />
-                              Tool Details
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                              {serverTools.map(tool => {
-                                const toolInfo = getToolInfo(tool);
-                                return (
-                                  <Card 
-                                    key={tool} 
-                                    className="cursor-pointer transition-all hover:shadow-md"
-                                    onClick={() => handleToolSelect(tool)}
-                                  >
-                                    <CardHeader className="py-2 px-3">
-                                      <CardTitle className="text-sm flex items-center gap-2">
-                                        <Code className="h-3 w-3 text-primary" />
-                                        {toolInfo.name}
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="py-1 px-3">
-                                      <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
-                                      <div className="mt-2">
-                                        <Button 
-                                          variant="secondary" 
-                                          size="sm" 
-                                          className="w-full text-xs"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleToolSelect(tool);
-                                          }}
-                                        >
-                                          Use Tool
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                );
-                              })}
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                        
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {serverTools.slice(0, 5).map(tool => {
-                            return (
-                              <Badge 
-                                key={tool}
-                                variant="outline" 
-                                className="cursor-pointer hover:bg-primary/10"
-                                onClick={() => handleToolSelect(tool)}
-                              >
-                                {tool}
-                              </Badge>
-                            );
-                          })}
-                          {serverTools.length > 5 && (
-                            <Badge variant="outline">+{serverTools.length - 5} more</Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>
