@@ -31,6 +31,11 @@ interface ToolsResponse {
   tools: string[];
 }
 
+// Add server data interface
+interface ServerResponse {
+  servers: Record<string, string[]>;
+}
+
 // Simplified tool metadata interface
 interface ToolInfo {
   name: string;
@@ -65,6 +70,9 @@ function App() {
   // Add provider state
   const [currentProvider, setCurrentProvider] = useState<string>('anthropic');
   const [availableProviders, setAvailableProviders] = useState<string[]>(['anthropic', 'google']);
+  
+  // Add servers state
+  const [servers, setServers] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -168,6 +176,89 @@ function App() {
     }
   };
 
+  // Fetch servers and their tools
+  const fetchServers = async () => {
+    try {
+      // Get the API URL from environment variables
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      
+      // First create a simple mock servers endpoint
+      const mockServerEndpoint = 'http://localhost:7565/api/servers';
+      
+      // Try to fetch from mock server first
+      try {
+        const response = await fetch(mockServerEndpoint);
+        if (response.ok) {
+          const data: ServerResponse = await response.json();
+          setServers(data.servers || {});
+          console.log("Loaded servers from mock API:", data.servers);
+          return;
+        }
+      } catch (error) {
+        console.log("Mock server not available, generating server data from tools");
+      }
+      
+      // If mock server fails, generate server data from tools
+      // Fetch tools first
+      const toolsResponse = await fetch(`${apiUrl}/api/tools`);
+      if (!toolsResponse.ok) {
+        throw new Error('Failed to fetch tools for server grouping');
+      }
+      
+      const toolsData: ToolsResponse = await toolsResponse.json();
+      const allTools = toolsData.tools || [];
+      
+      // Simple categorization of tools by name patterns
+      const serverGroups: Record<string, string[]> = {};
+      
+      // Define known server categories
+      const knownServers = [
+        'websearch', 'research', 'weather', 'summarize', 'webscrap',
+        'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 'fastmcp_test', 'playwright', 'supabase'
+      ];
+      
+      // Initialize server groups
+      knownServers.forEach(server => {
+        serverGroups[server] = [];
+      });
+      
+      // Assign tools to servers
+      allTools.forEach(tool => {
+        let assigned = false;
+        
+        // Check if the tool name matches or contains a server name
+        for (const server of knownServers) {
+          if (tool === server || tool.startsWith(server + '_') || tool.includes(server)) {
+            serverGroups[server].push(tool);
+            assigned = true;
+            break;
+          }
+        }
+        
+        // If no match found, put in "other" category
+        if (!assigned) {
+          if (!serverGroups['other']) {
+            serverGroups['other'] = [];
+          }
+          serverGroups['other'].push(tool);
+        }
+      });
+      
+      // Remove empty server groups
+      Object.keys(serverGroups).forEach(server => {
+        if (serverGroups[server].length === 0) {
+          delete serverGroups[server];
+        }
+      });
+      
+      setServers(serverGroups);
+      console.log("Generated server groups from tools:", serverGroups);
+      
+    } catch (error) {
+      console.error('Error fetching or generating servers data:', error);
+    }
+  };
+
   // Handle provider change
   const handleProviderChange = async (provider: string) => {
     try {
@@ -204,6 +295,7 @@ function App() {
   useEffect(() => {
     fetchTools();
     fetchProvider();
+    fetchServers();
   }, []);
 
   // Handle form submission
