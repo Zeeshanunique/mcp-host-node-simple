@@ -542,7 +542,7 @@ function App() {
                         </div>
 
                         <div className="flex justify-start my-2">
-                          <Collapsible defaultOpen={false}>
+                          <Collapsible className="w-full max-w-[80%] bg-muted/30 rounded-lg border" defaultOpen={false}>
                             <CollapsibleTrigger asChild>
                               <Button variant="ghost" className="flex w-full justify-between p-2 rounded-lg">
                                 <div className="flex items-center gap-2">
