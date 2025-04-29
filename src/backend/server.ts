@@ -483,6 +483,85 @@ app.get('/api/tools', (req: Request, res: Response) => {
   })();
 });
 
+// API endpoint for getting servers with their associated tools
+app.get('/api/servers', (req: Request, res: Response) => {
+  (async () => {
+  try {
+    const mcpConfigPath = path.resolve(process.cwd(), config.MCP_CONFIG_PATH);
+    // Read the server configuration file directly
+    const configContent = await fs.promises.readFile(mcpConfigPath, 'utf-8');
+    const mcpConfig = JSON.parse(configContent);
+    
+    // Get the map of tools grouped by server
+    const toolList = await host.toolList();
+    const serverMap: Record<string, string[]> = {};
+    
+    // Initialize servers from config
+    if (mcpConfig.mcpServers) {
+      Object.keys(mcpConfig.mcpServers).forEach(serverName => {
+        serverMap[serverName] = [];
+      });
+    }
+    
+    // Group tools by server using the host's internal categorization
+    // If available in your implementation
+    try {
+      // Use the enhancedTools method if it exists to get server information
+      const enhancedTools = await host.toolsWithMetadata();
+      
+      // Process enhanced tools with metadata
+      for (const [toolName, toolInfo] of Object.entries(enhancedTools)) {
+        const serverName = (toolInfo as any).metadata?.serverName || 'unknown';
+        if (!serverMap[serverName]) {
+          serverMap[serverName] = [];
+        }
+        serverMap[serverName].push(toolName);
+      }
+    } catch (error) {
+      // If the metadata approach failed, use a fallback approach with name-based matching
+      logger.warn({ error, reqId: (req as any).reqId }, 'Using fallback server grouping method');
+      
+      // Fallback: group by tool name prefixes
+      for (const toolName of toolList) {
+        let assigned = false;
+        
+        // Try to match the tool name to a server name
+        for (const serverName of Object.keys(serverMap)) {
+          if (toolName === serverName || 
+              toolName.startsWith(`${serverName}_`) || 
+              toolName.includes(serverName)) {
+            serverMap[serverName].push(toolName);
+            assigned = true;
+            break;
+          }
+        }
+        
+        // If no match found, put in "other" category
+        if (!assigned) {
+          if (!serverMap['other']) {
+            serverMap['other'] = [];
+          }
+          serverMap['other'].push(toolName);
+        }
+      }
+    }
+    
+    // Remove empty servers
+    Object.keys(serverMap).forEach(server => {
+      if (serverMap[server].length === 0) {
+        delete serverMap[server];
+      }
+    });
+    
+    logger.debug({ servers: Object.keys(serverMap), reqId: (req as any).reqId }, 'Returning servers with tools');
+    res.json({ servers: serverMap });
+  } catch (error) {
+    logger.error({ error, reqId: (req as any).reqId }, 'Error fetching servers');
+    res.status(500).json({ error: 'Failed to fetch servers' });
+  }
+  })();
+});
+
 // Graceful shutdown function
 const gracefulShutdown = async (signal: string) => {
   logger.info({ signal }, '[Server] Received shutdown signal');

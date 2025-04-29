@@ -182,8 +182,20 @@ function App() {
       // Get the API URL from environment variables
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
       
-      // Since we don't have a direct API to get servers,
-      // we'll use the tools list and organize them by server name patterns
+      // First, try to fetch servers directly from a dedicated endpoint
+      try {
+        const serversResponse = await fetch(`${apiUrl}/api/servers`);
+        if (serversResponse.ok) {
+          const serversData: ServerResponse = await serversResponse.json();
+          setServers(serversData.servers);
+          console.log("Fetched servers from API:", serversData.servers);
+          return;
+        }
+      } catch (error) {
+        console.warn('Direct server fetch failed, falling back to tool grouping method:', error);
+      }
+      
+      // Fallback: Use the tools list and organize them by server name patterns
       const response = await fetch(`${apiUrl}/api/tools`);
       if (!response.ok) {
         throw new Error('Failed to fetch tools for server grouping');
