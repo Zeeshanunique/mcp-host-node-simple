@@ -119,6 +119,28 @@ export class MCPHost {
     const toolsObj = await this.tools();
     const enhancedTools: Record<string, any> = {};
     
+    // Create a map of tool to server name
+    const toolToServerMap: Record<string, string> = {};
+    
+    // Iterate through child processes to map tools to their servers
+    for (const [serverName, _process] of Object.entries(this.#childProcesses)) {
+      try {
+        // Attempt to get tools associated with this server name from the config
+        for (const toolName of Object.keys(toolsObj)) {
+          // Check if tool name matches or is related to server name
+          if (
+            toolName === serverName || 
+            toolName.startsWith(`${serverName}_`) || 
+            toolName.includes(serverName)
+          ) {
+            toolToServerMap[toolName] = serverName;
+          }
+        }
+      } catch (error) {
+        logger.warn({ error, serverName }, '[MCPHost] Error mapping tools to server');
+      }
+    }
+    
     for (const [name, tool] of Object.entries(toolsObj)) {
       // Extract or generate metadata
       const metadata = {
@@ -126,6 +148,8 @@ export class MCPHost {
         description: (tool as any).description || `Tool for ${name.replace(/_/g, ' ')} operations`,
         parameters: (tool as any).parameters || {},
         category: this.categorizeToolByName(name),
+        // Add the server name to metadata if known
+        serverName: toolToServerMap[name] || this.inferServerFromToolName(name) || 'other'
       };
       
       enhancedTools[name] = {
@@ -135,6 +159,24 @@ export class MCPHost {
     }
     
     return enhancedTools;
+  }
+  
+  // Helper method to infer server name from tool name
+  private inferServerFromToolName(toolName: string): string | null {
+    // Common prefixes that indicate a server
+    const knownServers = [
+      'websearch', 'research', 'weather', 'summarize', 'webscrap',
+      'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
+      'fastmcp_test', 'playwright', 'supabase', 'airbnb'
+    ];
+    
+    for (const server of knownServers) {
+      if (toolName === server || toolName.startsWith(`${server}_`) || toolName.includes(server)) {
+        return server;
+      }
+    }
+    
+    return null;
   }
 
   // Add timeout handling for subprocess tools

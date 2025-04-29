@@ -12,7 +12,7 @@ import { ShortcutsHelpDialog } from './components/shortcuts-help-dialog';
 import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle } from 'lucide-react';
+import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown } from 'lucide-react';
 
 interface ToolResult {
   name: string;
@@ -764,34 +764,98 @@ function App() {
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{Object.keys(servers).length} Servers</Badge>
+                        <Badge variant="outline">{Object.values(servers).flat().length} Tools</Badge>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex items-center gap-1"
+                        onClick={() => fetchServers()}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Refresh
+                      </Button>
+                    </div>
+                    
                     {Object.entries(servers).map(([serverName, serverTools]) => (
-                      <div key={serverName} className="border rounded-lg p-4">
-                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                          <Cpu className="h-4 w-4 text-primary" />
-                          {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
-                          <Badge variant="secondary">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                          {serverTools.map(tool => {
-                            const toolInfo = getToolInfo(tool);
+                      <div key={serverName} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <Cpu className="h-4 w-4 text-primary" />
+                            {serverName.charAt(0).toUpperCase() + serverName.slice(1).replace(/_/g, ' ')}
+                            <Badge variant="secondary" className="ml-2">{serverTools.length} tool{serverTools.length !== 1 ? 's' : ''}</Badge>
+                          </h3>
+                          <Badge variant="outline" className="text-xs">
+                            <span className="inline-block h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                            Active
+                          </Badge>
+                        </div>
+                        
+                        <Collapsible>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="sm" className="flex items-center gap-1 mb-2">
+                              <ChevronDown className="h-3 w-3" />
+                              Tool Details
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                              {serverTools.map(tool => {
+                                const toolInfo = getToolInfo(tool);
+                                return (
+                                  <Card 
+                                    key={tool} 
+                                    className="cursor-pointer transition-all hover:shadow-md"
+                                    onClick={() => handleToolSelect(tool)}
+                                  >
+                                    <CardHeader className="py-2 px-3">
+                                      <CardTitle className="text-sm flex items-center gap-2">
+                                        <Code className="h-3 w-3 text-primary" />
+                                        {toolInfo.name}
+                                      </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="py-1 px-3">
+                                      <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
+                                      <div className="mt-2">
+                                        <Button 
+                                          variant="secondary" 
+                                          size="sm" 
+                                          className="w-full text-xs"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToolSelect(tool);
+                                          }}
+                                        >
+                                          Use Tool
+                                        </Button>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                        
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {serverTools.slice(0, 5).map(tool => {
                             return (
-                              <Card 
-                                key={tool} 
-                                className="cursor-pointer transition-all hover:shadow-md"
+                              <Badge 
+                                key={tool}
+                                variant="outline" 
+                                className="cursor-pointer hover:bg-primary/10"
                                 onClick={() => handleToolSelect(tool)}
                               >
-                                <CardHeader className="py-2 px-3">
-                                  <CardTitle className="text-sm flex items-center gap-2">
-                                    <Code className="h-3 w-3 text-primary" />
-                                    {toolInfo.name}
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent className="py-1 px-3">
-                                  <p className="text-xs text-muted-foreground">{toolInfo.description}</p>
-                                </CardContent>
-                              </Card>
+                                {tool}
+                              </Badge>
                             );
                           })}
+                          {serverTools.length > 5 && (
+                            <Badge variant="outline">+{serverTools.length - 5} more</Badge>
+                          )}
                         </div>
                       </div>
                     ))}
