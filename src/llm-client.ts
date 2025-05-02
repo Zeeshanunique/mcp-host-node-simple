@@ -1,5 +1,6 @@
 import { CoreMessage, generateText, Message, ToolResultPart, ToolResultUnion, AssistantContent } from 'ai';
 import { LLMProvider } from './llm-provider.js';
+import { SessionManager, Session } from './session-manager.js';
 
 export type LLMPrompt = Omit<
   Parameters<typeof generateText>[0],
@@ -19,19 +20,26 @@ export type LLMMessages = Array<CoreMessage>;
 export type LLMClientOption = {
   provider: LLMProvider;
   initialMessages?: CoreMessage[];
+  sessionManager?: SessionManager;
 };
 
 export class LLMClient {
   #provider: LLMProvider;
   #messages: LLMMessages = [];
+  #sessionManager?: SessionManager;
+  #currentSessionId?: string;
 
-  constructor({ provider, initialMessages = [] }: LLMClientOption) {
+  constructor({ provider, initialMessages = [], sessionManager }: LLMClientOption) {
     this.#provider = provider;
     this.#messages = initialMessages;
+    this.#sessionManager = sessionManager;
 
     console.log('[LLMClient] Initialized with', provider.name());
     if (initialMessages.length > 0) {
         console.log('[LLMClient] Initialized with message history count:', initialMessages.length);
+    }
+    if (sessionManager) {
+        console.log('[LLMClient] Using session-based memory management');
     }
   }
 
@@ -40,31 +48,94 @@ export class LLMClient {
   }
 
   messages() {
+    // If we have a session manager and current session, return session messages
+    if (this.#sessionManager && this.#currentSessionId) {
+      return this.#sessionManager.getMessages(this.#currentSessionId);
+    }
+    // Otherwise return local messages
     return this.#messages;
   }
 
+  /**
+   * Set the current session ID for this client
+   */
+  setSessionId(sessionId: string): boolean {
+    if (!this.#sessionManager) {
+      console.warn('[LLMClient] Attempted to set session ID but no session manager is configured');
+      return false;
+    }
+    
+    const session = this.#sessionManager.getSession(sessionId);
+    if (!session) {
+      console.warn(`[LLMClient] Session ${sessionId} not found`);
+      return false;
+    }
+    
+    this.#currentSessionId = sessionId;
+    console.log(`[LLMClient] Switched to session ${sessionId}`);
+    return true;
+  }
+  
+  /**
+   * Create a new session and set it as current
+   */
+  createSession(userId: string, metadata: Record<string, any> = {}): Session | null {
+    if (!this.#sessionManager) {
+      console.warn('[LLMClient] Attempted to create session but no session manager is configured');
+      return null;
+    }
+    
+    const session = this.#sessionManager.createSession(userId, metadata);
+    this.#currentSessionId = session.id;
+    
+    // If we have messages in memory, transfer them to the new session
+    if (this.#messages.length > 0) {
+      for (const message of this.#messages) {
+        this.#sessionManager.addMessage(session.id, message);
+      }
+      this.#messages = []; // Clear local messages
+    }
+    
+    console.log(`[LLMClient] Created and switched to session ${session.id} for user ${userId}`);
+    return session;
+  }
+
   append(role: LLMMessageType, content: string | AssistantContent | ToolResultPart | ReadonlyArray<ToolResultPart>) {
+    let message: CoreMessage;
+    
     if (role === 'tool') {
         const toolContent: ReadonlyArray<ToolResultPart> = Array.isArray(content)
             ? content as unknown as ReadonlyArray<ToolResultPart>
             : [content as ToolResultPart];
             
-        this.#messages.push({ role, content: [...toolContent] });
+        message = { role, content: [...toolContent] };
     } else if (role === 'assistant') {
-        this.#messages.push({ role, content: content as AssistantContent });
+        message = { role, content: content as AssistantContent };
     } else if (role === 'user' && typeof content === 'string') {
-        this.#messages.push({ role, content });
+        message = { role, content };
     } else if (role === 'system' && typeof content === 'string') {
-        this.#messages.push({ role, content });
+        message = { role, content };
     } else {
         console.warn(`[LLMClient] Skipping append for role '${role}' due to unexpected content type:`, content);
+        return;
+    }
+    
+    // Add message to session if we have a session manager and current session
+    if (this.#sessionManager && this.#currentSessionId) {
+      this.#sessionManager.addMessage(this.#currentSessionId, message);
+    } else {
+      // Otherwise add to local messages
+      this.#messages.push(message);
     }
   }
 
   async #generateText(prompt: LLMPrompt = {}) {
+    // Use session messages if available, otherwise use local messages
+    const messages = this.messages();
+    
     return await generateText({
       model: this.#provider.model(),
-      messages: this.#messages,
+      messages,
       ...prompt,
     });
   }

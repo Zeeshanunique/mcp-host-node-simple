@@ -15,17 +15,37 @@ export type MCPClient = Awaited<
 // Define the transport types needed for the client
 export type MCPClientTransport = Experimental_StdioMCPTransport | { type: string; url: string };
 
+// Add tool context tracking
+export type ToolContext = {
+  sessionId?: string;
+  userId?: string;
+  metadata?: Record<string, any>;
+};
+
+// Add session-specific tool context tracking
+export type SessionToolContext = {
+  [sessionId: string]: {
+    toolStates: Record<string, any>;
+    lastUsed: Record<string, number>;
+    successfulCalls: Record<string, number>;
+    failedCalls: Record<string, number>;
+  }
+};
+
 export class MCPHost {
   #tools: Record<string, any>;
   #childProcesses: Record<string, any>;
   #serverToolMap: Record<string, string[]>;
   #initialDiscovery: Record<string, string[]>;
+  #sessionToolContext: SessionToolContext;
+  #currentContext?: ToolContext;
 
   constructor() {
     this.#tools = {};
     this.#childProcesses = {};
     this.#serverToolMap = {};
     this.#initialDiscovery = {};
+    this.#sessionToolContext = {};
   }
 
   async start(options: MCPHostOptions) {
@@ -86,10 +106,9 @@ export class MCPHost {
 
         for (const [name, tool] of Object.entries(tools)) {
           logger.debug({ name }, '[MCPHost] Adding tool');
-          this.#tools = {
-            ...this.#tools,
-            [name]: tool,
-          };
+          
+          // Wrap the tool to support session context
+          this.#tools[name] = this.#wrapToolWithContext(name, tool);
           
           // Map tool to server if we know which server it came from
           if (serverName) {
@@ -114,6 +133,156 @@ export class MCPHost {
       serverCount: Object.keys(this.#serverToolMap).length,
       mapping: this.#serverToolMap 
     }, '[MCPHost] Server-tool mapping established');
+  }
+  
+  /**
+   * Wrap a tool function with session context awareness
+   */
+  #wrapToolWithContext(toolName: string, originalTool: any): any {
+    // Create a wrapped function that preserves the original tool's properties
+    const wrappedTool = async (...args: any[]) => {
+      try {
+        const context = this.#currentContext;
+        const sessionId = context?.sessionId;
+        
+        // Initialize session tool context if it doesn't exist
+        if (sessionId && !this.#sessionToolContext[sessionId]) {
+          this.#sessionToolContext[sessionId] = {
+            toolStates: {},
+            lastUsed: {},
+            successfulCalls: {},
+            failedCalls: {}
+          };
+        }
+        
+        // Track tool usage for this session
+        if (sessionId) {
+          this.#sessionToolContext[sessionId].lastUsed[toolName] = Date.now();
+          
+          // Initialize counters if they don't exist
+          if (!this.#sessionToolContext[sessionId].successfulCalls[toolName]) {
+            this.#sessionToolContext[sessionId].successfulCalls[toolName] = 0;
+          }
+          if (!this.#sessionToolContext[sessionId].failedCalls[toolName]) {
+            this.#sessionToolContext[sessionId].failedCalls[toolName] = 0;
+          }
+        }
+        
+        logger.info({ 
+          toolName, 
+          sessionId: context?.sessionId, 
+          userId: context?.userId 
+        }, '[MCPHost] Executing tool with context');
+        
+        // Call the original tool function
+        const result = await originalTool(...args);
+        
+        // Update success counter
+        if (sessionId) {
+          this.#sessionToolContext[sessionId].successfulCalls[toolName]++;
+          
+          // Store any tool state if needed
+          if (result && typeof result === 'object' && result.state) {
+            this.#sessionToolContext[sessionId].toolStates[toolName] = result.state;
+          }
+        }
+        
+        return result;
+      } catch (error) {
+        // Track failures
+        const sessionId = this.#currentContext?.sessionId;
+        if (sessionId && this.#sessionToolContext[sessionId]) {
+          this.#sessionToolContext[sessionId].failedCalls[toolName]++;
+        }
+        
+        logger.error({ 
+          error, 
+          toolName, 
+          sessionId
+        }, '[MCPHost] Tool execution failed');
+        
+        throw error;
+      }
+    };
+    
+    // Copy all properties from the original tool to preserve metadata
+    Object.assign(wrappedTool, originalTool);
+    
+    return wrappedTool;
+  }
+  
+  /**
+   * Set the current context for tool execution
+   */
+  setContext(context: ToolContext): void {
+    this.#currentContext = context;
+    logger.debug({ context }, '[MCPHost] Set current context');
+  }
+  
+  /**
+   * Clear the current context
+   */
+  clearContext(): void {
+    this.#currentContext = undefined;
+    logger.debug('[MCPHost] Cleared current context');
+  }
+  
+  /**
+   * Get tool context for a specific session
+   */
+  getSessionToolContext(sessionId: string): Record<string, any> | null {
+    if (!this.#sessionToolContext[sessionId]) {
+      return null;
+    }
+    
+    return this.#sessionToolContext[sessionId];
+  }
+  
+  /**
+   * Get tool usage statistics for a session
+   */
+  getToolUsageStats(sessionId: string): { 
+    toolUsage: Record<string, { 
+      lastUsed: number, 
+      successCount: number, 
+      failCount: number 
+    }>,
+    mostUsedTools: string[],
+    recentlyUsedTools: string[]
+  } | null {
+    if (!this.#sessionToolContext[sessionId]) {
+      return null;
+    }
+    
+    const sessionContext = this.#sessionToolContext[sessionId];
+    const toolUsage: Record<string, any> = {};
+    
+    // Compile usage statistics
+    for (const toolName of Object.keys(sessionContext.lastUsed)) {
+      toolUsage[toolName] = {
+        lastUsed: sessionContext.lastUsed[toolName],
+        successCount: sessionContext.successfulCalls[toolName] || 0,
+        failCount: sessionContext.failedCalls[toolName] || 0
+      };
+    }
+    
+    // Get most used tools (by success count)
+    const mostUsedTools = Object.entries(sessionContext.successfulCalls || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([toolName]) => toolName);
+    
+    // Get recently used tools
+    const recentlyUsedTools = Object.entries(sessionContext.lastUsed || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([toolName]) => toolName);
+    
+    return {
+      toolUsage,
+      mostUsedTools,
+      recentlyUsedTools
+    };
   }
   
   // Helper method to find which server name corresponds to a client by index
