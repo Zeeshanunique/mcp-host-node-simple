@@ -126,7 +126,71 @@ export class MCPHost {
   
   // Get the server-tool mapping established during initialization
   async getServerToolMap(): Promise<Record<string, string[]>> {
-    return { ...this.#serverToolMap };
+    // If we have direct mappings from initialization, use them
+    if (Object.keys(this.#serverToolMap).length > 0) {
+      return { ...this.#serverToolMap };
+    }
+    
+    // If no direct mappings are available, try to infer from tool names
+    const inferredMap: Record<string, string[]> = {};
+    const tools = await this.tools();
+    const toolNames = Object.keys(tools);
+    
+    // Define known servers (retrieve from class member if available)
+    const knownServers = Object.keys(this.#initialDiscovery).length > 0 
+      ? Object.keys(this.#initialDiscovery)
+      : [
+          'websearch', 'research', 'weather', 'summarize', 'webscrap',
+          'aws_docs', 'calculator', 'travel_guide', 'age_calculator', 
+          'fastmcp_test', 'playwright', 'supabase', 'airbnb', 'github'
+        ];
+    
+    // Initialize server entries
+    for (const serverName of knownServers) {
+      inferredMap[serverName] = [];
+    }
+    
+    // Create regexps for more accurate matching
+    const serverPatterns = knownServers.map(name => ({
+      name,
+      regex: new RegExp(`^${name}$|^${name}_|_${name}_|_${name}$|[.-]${name}$|^${name}[.-]`)
+    }));
+    
+    // Map tools to servers
+    for (const toolName of toolNames) {
+      let assigned = false;
+      
+      // First try exact matches or strong pattern matches
+      for (const { name, regex } of serverPatterns) {
+        if (regex.test(toolName) || toolName.includes(name)) {
+          inferredMap[name].push(toolName);
+          assigned = true;
+          break;
+        }
+      }
+      
+      // If still not assigned, use "other" category
+      if (!assigned) {
+        if (!inferredMap['other']) {
+          inferredMap['other'] = [];
+        }
+        inferredMap['other'].push(toolName);
+      }
+    }
+    
+    // Remove empty servers
+    Object.keys(inferredMap).forEach(server => {
+      if (inferredMap[server].length === 0) {
+        delete inferredMap[server];
+      }
+    });
+    
+    logger.info({ 
+      serverCount: Object.keys(inferredMap).length,
+      toolCount: Object.values(inferredMap).flat().length 
+    }, '[MCPHost] Generated inferred server-tool mapping');
+    
+    return inferredMap;
   }
   
   // Get the initial discovery of tools by server during startup

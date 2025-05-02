@@ -2,5 +2,11 @@
   "name": "aws-documentation-mcp",
   "version": "1.0.0",
   "type": "module",
-  "private": true
-} 
+  "private": true,
+  "dependencies": {
+    "axios": "^1.9.0",
+    "cheerio": "^1.0.0",
+    "turndown": "^7.2.0",
+    "zod": "^3.24.3"
+  }
+}

@@ -12,7 +12,7 @@ import { ShortcutsHelpDialog } from './components/shortcuts-help-dialog';
 import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown } from 'lucide-react';
+import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown, X, ServerIcon as Server, Wrench } from 'lucide-react';
 
 interface ToolResult {
   name: string;
@@ -25,6 +25,13 @@ interface ChatResponse {
   initialResponse: string;
   toolResults: ToolResult[];
   finalResponse: string | null;
+  metadata?: {
+    selectedServer: string | null;
+    selectedTool: string | null; 
+    useAllServerTools: boolean;
+    availableTools: string[];
+    toolCount: number;
+  };
 }
 
 interface ToolsResponse {
@@ -322,13 +329,23 @@ function App() {
     try {
       // Get the API URL from environment variables
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      
+      // Create a copy of the chat history that includes the new message
+      const fullHistory = [...chatHistory, newUserMessage];
+      
+      // Format the history for the API
+      const formattedHistory = fullHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+      
       const response = await fetch(`${apiUrl}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          history: [{ role: 'user', content: message }],
+          history: formattedHistory, // Send the complete chat history
           selectedTool: selectedTool,
           selectedServer: selectedServer,
           useAllServerTools: useAllServerTools,
@@ -436,6 +453,34 @@ function App() {
                 ))}
               </select>
             </div>
+            {selectedServer && useAllServerTools && (
+              <Badge variant="outline" className="flex items-center gap-1 text-sm">
+                <Server className="h-3 w-3" />
+                Using {selectedServer} server
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-4 w-4 p-0 ml-1" 
+                  onClick={() => {setSelectedServer(null); setUseAllServerTools(false);}}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
+            {selectedTool && (
+              <Badge variant="outline" className="flex items-center gap-1 text-sm">
+                <Wrench className="h-3 w-3" />
+                Using {selectedTool}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-4 w-4 p-0 ml-1" 
+                  onClick={() => setSelectedTool(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            )}
             <span className="text-sm text-muted-foreground hidden md:inline-flex items-center gap-1">
               <Code className="h-4 w-4" />
               {tools.length} Tools Available
@@ -493,6 +538,16 @@ function App() {
                   </CardTitle>
                   <CardDescription>Interact with the AI assistant using the available tools.</CardDescription>
                 </div>
+                {selectedServer && useAllServerTools && (
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs text-muted-foreground mb-1">Using tools from server: <strong>{selectedServer}</strong></span>
+                    {chatResponse?.metadata?.availableTools && (
+                      <Badge variant="outline" className="px-2 py-1">
+                        {chatResponse.metadata.toolCount} tools available
+                      </Badge>
+                    )}
+                  </div>
+                )}
                 {chatHistory.length > 0 && (
                   <Button 
                     variant="ghost" 
@@ -527,6 +582,7 @@ function App() {
                         <p className="mt-4 text-sm">Type a message below to get started!</p>
                       </div>
                     ) : (
+                      // Display all messages
                       chatHistory.map((msg, index) => (
                         <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           <div 
@@ -541,6 +597,7 @@ function App() {
                       ))
                     )}
                     
+                    {/* Show tool results after all chat messages */}
                     {chatResponse && chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
                       <>
                         <div className="flex items-center justify-center w-full px-4 py-2">
@@ -569,8 +626,8 @@ function App() {
                             </CollapsibleTrigger>
                             <CollapsibleContent className="px-4 pb-4">
                               <div className="space-y-4">
-                                {chatResponse.toolResults.map((tool, index) => (
-                                  <div key={index} className={`rounded-md p-3 border-l-2 ${
+                                {chatResponse.toolResults.map((tool, idx) => (
+                                  <div key={idx} className={`rounded-md p-3 border-l-2 ${
                                     tool.name.includes('weather') ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-400' :
                                     tool.name.includes('search') ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-400' :
                                     tool.name.includes('destination') ? 'bg-green-50/50 dark:bg-green-950/20 border-green-400' :
@@ -604,6 +661,31 @@ function App() {
                         </div>
                       </>
                     )}
+
+                    {/* Final complete answer */}
+                    {chatResponse && chatResponse.finalResponse && (
+                      <div className="flex justify-start w-full">
+                        <Collapsible className="w-full max-w-[80%] bg-primary/15 rounded-lg border-l-4 border-primary" defaultOpen={true}>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="flex w-full justify-between p-2 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="h-5 w-5 text-primary" />
+                                <span className="font-semibold text-base">Complete Answer</span>
+                              </div>
+                              {chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
+                                <Badge variant="outline" className="text-xs">Based on {chatResponse.toolResults.length} tool result{chatResponse.toolResults.length > 1 ? 's' : ''}</Badge>
+                              )}
+                              <ChevronsDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="px-4 pb-4">
+                            <div className="whitespace-pre-wrap text-sm bg-background/80 p-3 rounded border border-muted mt-2">
+                              {chatResponse.finalResponse}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </div>
+                    )}
                     
                     {isLoading && (
                       <div className="flex justify-start">
@@ -620,25 +702,7 @@ function App() {
                         </div>
                       </div>
                     )}
-                    {/* Add final response with visual indicator if available */}
-                    {chatResponse && chatResponse.finalResponse && (
-                      <div className="flex justify-start w-full">
-                        <div className="rounded-lg p-4 bg-primary/15 w-full max-w-[80%] border-l-4 border-primary">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle className="h-5 w-5 text-primary" />
-                              <span className="font-semibold text-base">Complete Answer</span>
-                            </div>
-                            {chatResponse.toolResults && chatResponse.toolResults.length > 0 && (
-                              <Badge variant="outline" className="text-xs">Based on {chatResponse.toolResults.length} tool result{chatResponse.toolResults.length > 1 ? 's' : ''}</Badge>
-                            )}
-                          </div>
-                          <div className="whitespace-pre-wrap text-sm bg-background/80 p-3 rounded border border-muted">
-                            {chatResponse.finalResponse}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    
                     <div ref={chatEndRef} />
                   </div>
                 </ScrollArea>

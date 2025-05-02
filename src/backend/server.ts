@@ -237,7 +237,13 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
   (async () => {
   try {
     // Extract and validate history from the request body
-    const { history, provider } = req.body as { history: CoreMessage[], provider?: 'anthropic' | 'openai' | 'bedrock' | 'azure' };
+    const { history, provider, selectedServer, selectedTool, useAllServerTools } = req.body as { 
+      history: CoreMessage[], 
+      provider?: 'anthropic' | 'openai' | 'bedrock' | 'azure',
+      selectedServer?: string,
+      selectedTool?: string,
+      useAllServerTools?: boolean
+    };
     
     if (!history || !Array.isArray(history) || history.length === 0) {
       logger.warn({ reqId: (req as any).reqId }, 'Invalid chat request: empty or missing history');
@@ -254,7 +260,10 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
     logger.info({ 
       reqId: (req as any).reqId,
       messageCount: history.length,
-      lastUserMessage: typeof lastMessage.content === 'string' ? lastMessage.content.substring(0, 50) : '[complex content]'
+      lastUserMessage: typeof lastMessage.content === 'string' ? lastMessage.content.substring(0, 50) : '[complex content]',
+      selectedServer,
+      selectedTool,
+      useAllServerTools
     }, 'Processing chat request');
     
     // Use the provider from the request if specified, otherwise use the current default
@@ -274,11 +283,58 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
     logger.info({ reqId: (req as any).reqId, provider: currentProviderName }, 'Using LLM provider');
     
     // Load MCP tools directly from the host
-    const mcpTools = await host.tools();
+    let mcpTools = await host.tools();
+    
+    // Filter tools based on server selection
+    if (selectedServer && useAllServerTools) {
+      // Get the server-tool mapping
+      const serverToolMap = await host.getServerToolMap();
+      
+      if (serverToolMap[selectedServer]) {
+        // Filter to only include tools from the selected server
+        const serverTools = serverToolMap[selectedServer];
+        const filteredTools: Record<string, any> = {};
+        
+        for (const toolName of serverTools) {
+          if (mcpTools[toolName]) {
+            filteredTools[toolName] = mcpTools[toolName];
+          }
+        }
+        
+        mcpTools = filteredTools;
+        
+        logger.info({ 
+          reqId: (req as any).reqId, 
+          server: selectedServer,
+          availableTools: Object.keys(mcpTools)
+        }, 'Filtered tools by selected server');
+      } else {
+        logger.warn({ 
+          reqId: (req as any).reqId, 
+          server: selectedServer 
+        }, 'Selected server not found in mapping, using all tools');
+      }
+    } else if (selectedTool) {
+      // Filter to only include the selected tool
+      if (mcpTools[selectedTool]) {
+        mcpTools = { [selectedTool]: mcpTools[selectedTool] };
+        
+        logger.info({ 
+          reqId: (req as any).reqId, 
+          tool: selectedTool
+        }, 'Filtered to single selected tool');
+      } else {
+        logger.warn({ 
+          reqId: (req as any).reqId, 
+          tool: selectedTool 
+        }, 'Selected tool not found, using all tools');
+      }
+    }
+    
     logger.info({ 
       reqId: (req as any).reqId,
       toolCount: Object.keys(mcpTools).length,
-      toolList: await host.toolList(),
+      toolList: Object.keys(mcpTools),
       provider: getCurrentProvider()
     }, 'Loaded MCP tools for request');
     
@@ -290,10 +346,21 @@ app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
     const MAX_ITERATIONS = 5; // Prevent infinite loops
 
     // Add initial system message to guide the entire conversation
-    llm.append('user', `For queries requiring external data or specific operations, use the appropriate tools. 
+    let systemPrompt = `For queries requiring external data or specific operations, use the appropriate tools. 
 For multi-part queries, make sure to use all necessary tools to gather complete information.
 Always treat tool results as real data for analysis purposes, even if they're noted as simulated.
-After gathering all information, provide a comprehensive final answer that synthesizes all the tool results.`);
+After gathering all information, provide a comprehensive final answer that synthesizes all the tool results.`;
+
+    // Add server-specific instructions if a server is selected
+    if (selectedServer && useAllServerTools) {
+      systemPrompt += `\nIMPORTANT: You currently have access ONLY to the tools from the "${selectedServer}" server. 
+Use these tools exclusively to answer the user's query.`;
+    } else if (selectedTool) {
+      systemPrompt += `\nIMPORTANT: You currently have access ONLY to the "${selectedTool}" tool.
+Use this tool exclusively to answer the user's query.`;
+    }
+
+    llm.append('user', systemPrompt);
 
     while (continueToolExecution && loopCount < MAX_ITERATIONS) {
       loopCount++;
@@ -448,7 +515,15 @@ After gathering all information, provide a comprehensive final answer that synth
           totalSteps: allToolResults.length
         };
       }),
-      finalResponse: finalResponseTextForFrontend
+      finalResponse: finalResponseTextForFrontend,
+      // Add metadata about server/tool selection to help with debugging and UI feedback
+      metadata: {
+        selectedServer: selectedServer || null,
+        selectedTool: selectedTool || null,
+        useAllServerTools: useAllServerTools || false,
+        availableTools: Object.keys(mcpTools),
+        toolCount: Object.keys(mcpTools).length
+      }
     };
     
     logger.info({ 
