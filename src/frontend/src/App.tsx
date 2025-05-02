@@ -13,6 +13,7 @@ import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
 import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown, X, ServerIcon as Server, Wrench } from 'lucide-react';
+import { MarkdownRenderer } from './components/markdown-renderer';
 
 interface ToolResult {
   name: string;
@@ -85,8 +86,13 @@ function App() {
   const [servers, setServers] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory]);
+    // Add a small delay to ensure all content is rendered before scrolling
+    const scrollTimeout = setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 100);
+    
+    return () => clearTimeout(scrollTimeout);
+  }, [chatHistory, chatResponse]);
 
   // Generate tool info dynamically based on tool name
   const getToolInfo = (toolName: string): ToolInfo => {
@@ -325,6 +331,9 @@ function App() {
     setChatHistory((prev) => [...prev, newUserMessage]);
     setMessage("");
     setIsLoading(true);
+    
+    // Reset the chat response state when a new message is sent
+    setResponse(null);
 
     try {
       // Get the API URL from environment variables
@@ -591,7 +600,14 @@ function App() {
                               : 'bg-muted'
                             }`}
                           >
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            {msg.role === 'user' ? (
+                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            ) : (
+                              <MarkdownRenderer 
+                                content={msg.content} 
+                                className="whitespace-pre-wrap break-words" 
+                              />
+                            )}
                           </div>
                         </div>
                       ))
@@ -651,7 +667,7 @@ function App() {
                                       )}
                                     </div>
                                     <div className="whitespace-pre-wrap font-mono text-xs bg-background/80 p-3 rounded-sm overflow-x-auto">
-                                      {tool.result}
+                                      <MarkdownRenderer content={tool.result} className="text-xs" />
                                     </div>
                                   </div>
                                 ))}
@@ -680,7 +696,7 @@ function App() {
                           </CollapsibleTrigger>
                           <CollapsibleContent className="px-4 pb-4">
                             <div className="whitespace-pre-wrap text-sm bg-background/80 p-3 rounded border border-muted mt-2">
-                              {chatResponse.finalResponse}
+                              <MarkdownRenderer content={chatResponse.finalResponse} />
                             </div>
                           </CollapsibleContent>
                         </Collapsible>
@@ -703,7 +719,8 @@ function App() {
                       </div>
                     )}
                     
-                    <div ref={chatEndRef} />
+                    {/* Move chatEndRef div to the very end to ensure proper scrolling */}
+                    <div ref={chatEndRef} className="h-[20px]" /> {/* Added height to ensure there's padding at the bottom */}
                   </div>
                 </ScrollArea>
               </CardContent>

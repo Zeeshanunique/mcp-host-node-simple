@@ -146,7 +146,35 @@ export class LLMClient {
       prompt?.tools ? `with tools ${Object.keys(prompt?.tools ?? {})}` : ''
     );
 
-    return await this.#generateText(prompt);
+    const result = await this.#generateText(prompt);
+    
+    // Create a new result object with formatted text
+    return {
+      ...result,
+      text: result.text ? this.formatResponse(result.text) : result.text
+    };
+  }
+  
+  /**
+   * Format the response to handle Markdown syntax
+   * This ensures proper rendering of formatted text
+   */
+  formatResponse(text: string): string {
+    // Option 1: Convert Markdown to plain text by removing formatting characters
+    return text
+      // Remove heading markers
+      .replace(/^###\s+/gm, '')
+      .replace(/^##\s+/gm, '')
+      .replace(/^#\s+/gm, '')
+      // Remove bold/italic markers
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      // Remove bullet points
+      .replace(/^\s*-\s+/gm, '• ')
+      // Remove backticks
+      .replace(/`([^`]+)`/g, '$1')
+      // Fix spacing
+      .replace(/\n{3,}/g, '\n\n');
   }
 }
 
