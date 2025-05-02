@@ -1,1 +1,54 @@
- 
+{
+  "mcpServers": {
+    "websearch": {
+      "command": "node",
+      "args": ["./fixtures/servers/websearch/index.js"]
+    },
+    "research": {
+      "command": "node",
+      "args": ["./fixtures/servers/research/index.js"]
+    },
+    "weather": {
+      "command": "node",
+      "args": ["./fixtures/servers/weather/index.js"]
+    },
+    "summarize": {
+      "command": "node",
+      "args": ["./fixtures/servers/summarize/index.js"]
+    },
+    "travel_guide": {
+      "command": "node",
+      "args": ["./fixtures/servers/travel_guide/index.js"]
+    },
+    "webscrap": {
+      "command": "node",
+      "args": ["./fixtures/servers/webscrap/index.js"]
+    },
+    "aws_docs": {
+      "command": "node",
+      "args": ["./fixtures/servers/aws_documentation/index.js"]
+    },
+    "fastmcp_test": {
+      "command": "python",
+      "args": ["./fixtures/servers/fastmcp_test/main.py"],
+      "env": {
+        "PYTHONPATH": "./fixtures/servers/fastmcp_test"
+      }
+    },
+    "age_calculator": {
+      "command": "python",
+      "args": ["./fixtures/servers/age_calculator/main.py"],
+      "env": {
+        "PYTHONPATH": "./fixtures/servers/age_calculator"
+      }
+    },
+    "calculator": {
+      "command": "node",
+      "args": ["./fixtures/servers/calculator/index.js"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@0.0.13"]
+    }
+  }
+}
