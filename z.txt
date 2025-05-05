@@ -1,0 +1,33 @@
+"desktop-commander": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@wonderwhy-er/desktop-commander",
+        "--key",
+        "bcc0907e-f08e-410d-8a3e-ae6faecacdd3"
+      ]
+    },
+
+
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@0.0.13"]
+    },
+
+     "mcp-server-kubernetes": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "mcp-server-kubernetes",
+        "--key",
+        "bcc0907e-f08e-410d-8a3e-ae6faecacdd3"
+      ]
+    }

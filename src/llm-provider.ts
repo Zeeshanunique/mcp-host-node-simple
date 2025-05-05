@@ -27,6 +27,10 @@ export class AnthropicProvider implements LLMProvider {
   #model: LanguageModel;
 
   constructor() {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('Anthropic API key not found in environment variables');
+    }
+    
     const provider = createAnthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
@@ -54,6 +58,10 @@ export class OpenAIProvider implements LLMProvider {
   #model: LanguageModel;
 
   constructor() {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OpenAI API key not found in environment variables');
+    }
+    
     const provider = createOpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
@@ -80,10 +88,14 @@ export class OpenAIProvider implements LLMProvider {
  */
 export class BedrockAnthropicProvider implements LLMProvider {
   #providerName = 'BedrockAnthropic';
-  #modelName = 'anthropic.claude-3-7-sonnet-20250219-v1:0';
+  #modelName = 'anthropic.claude-3-sonnet-20240229-v1:0';
   #model: LanguageModel;
 
   constructor() {
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      throw new Error('AWS credentials not found in environment variables');
+    }
+    
     const provider = createAmazonBedrock({
       region: process.env.AWS_REGION || 'us-east-1',
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
