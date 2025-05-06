@@ -74,8 +74,8 @@ const apiLimiter = rateLimit({
   skip: (_req) => process.env.NODE_ENV === 'development' // Skip in development
 });
 
-// Apply rate limiting to API routes
-app.use('/api/', apiLimiter);
+// Apply rate limiting to API routes with the base path prefix
+app.use(`${config.BASE_PATH}/api/`, apiLimiter);
 
 // Add request ID middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -92,18 +92,19 @@ if (config.NODE_ENV === 'production') {
   logger.info({ path: frontendBuildPath, exists: fs.existsSync(frontendBuildPath) }, '[Server] Frontend build path');
   
   if (fs.existsSync(frontendBuildPath)) {
-    logger.info({ path: frontendBuildPath }, '[Server] Serving static files from frontend build');
+    logger.info({ path: frontendBuildPath, basePath: config.BASE_PATH }, '[Server] Serving static files from frontend build');
     
-    // Serve static files with appropriate caching headers
-    app.use(express.static(frontendBuildPath, {
+    // Serve static files with appropriate caching headers under the base path
+    app.use(config.BASE_PATH, express.static(frontendBuildPath, {
       maxAge: '1d', // Cache static assets for 1 day
       etag: true,
       lastModified: true
     }));
     
-    // Add catch-all route for SPA - this will serve index.html for any unmatched routes
-    app.get('*', (req: Request, res: Response, next: NextFunction) => {
-      if (!req.path.startsWith('/api/')) {
+    // Add catch-all route for SPA - this will serve index.html for any unmatched routes under base path
+    app.get(`${config.BASE_PATH}/*`, (req: Request, res: Response, next: NextFunction) => {
+      // Skip API routes
+      if (!req.path.startsWith(`${config.BASE_PATH}/api/`)) {
         const indexPath = path.join(frontendBuildPath, 'index.html');
         logger.info({ path: req.path, indexPath, exists: fs.existsSync(indexPath) }, '[Server] Serving SPA index.html');
         
@@ -193,7 +194,7 @@ const readyHandler: RequestHandler = async (_req, res) => {
 app.get('/ready', readyHandler);
 
 // API endpoint for selecting the LLM provider
-app.post('/api/provider', (req: Request, res: Response) => {
+app.post(`${config.FULL_API_PATH}/provider`, (req: Request, res: Response) => {
   (async () => {
   try {
     const { provider } = req.body;
@@ -225,7 +226,7 @@ app.post('/api/provider', (req: Request, res: Response) => {
 });
 
 // API endpoint to get current provider
-app.get('/api/provider', (_req: Request, res: Response) => {
+app.get(`${config.FULL_API_PATH}/provider`, (_req: Request, res: Response) => {
   res.status(200).json({ 
     provider: getCurrentProvider(),
     availableProviders: getAvailableProviders()
@@ -233,7 +234,7 @@ app.get('/api/provider', (_req: Request, res: Response) => {
 });
 
 // API endpoint for chat requests
-app.post('/api/chat', (req: Request, res: Response, next: NextFunction) => {
+app.post(`${config.FULL_API_PATH}/chat`, (req: Request, res: Response, next: NextFunction) => {
   (async () => {
   try {
     // Extract and validate history from the request body
@@ -577,7 +578,7 @@ Use this tool exclusively to answer the user's query.`;
 });
 
 // API endpoint for fetching available tools
-app.get('/api/tools', (req: Request, res: Response) => {
+app.get(`${config.FULL_API_PATH}/tools`, (req: Request, res: Response) => {
   (async () => {
   try {
     // Fetch the current tool list from the host
@@ -592,7 +593,7 @@ app.get('/api/tools', (req: Request, res: Response) => {
 });
 
 // API endpoint for getting servers with their associated tools
-app.get('/api/servers', (req: Request, res: Response) => {
+app.get(`${config.FULL_API_PATH}/servers`, (req: Request, res: Response) => {
   (async () => {
   try {
     // Get the direct server-tool mappings from the MCPHost

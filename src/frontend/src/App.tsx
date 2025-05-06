@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import appConfig from './lib/appConfig';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { ScrollArea } from './components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card';
@@ -152,11 +153,10 @@ function App() {
   // Fetch available tools
   const fetchTools = async () => {
     try {
-      // Get the API URL from environment variables
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
-      const response = await fetch(`${apiUrl}/api/tools`);
+      setError(null);
+      const response = await fetch(`${appConfig.apiPath}/tools`);
       if (!response.ok) {
-        throw new Error('Failed to fetch tools');
+        throw new Error(`Server responded with status: ${response.status}`);
       }
       const data: ToolsResponse = await response.json();
       
@@ -182,11 +182,11 @@ function App() {
   // Fetch the current provider information
   const fetchProvider = async () => {
     try {
-      // Get the API URL from environment variables
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
-      const response = await fetch(`${apiUrl}/api/provider`);
+      const response = await fetch(`${appConfig.apiPath}/provider`);
       if (!response.ok) {
-        throw new Error('Failed to fetch provider information');
+        // Non-blocking error - just log to console
+        console.error(`Failed to fetch provider: ${response.status}`);
+        return;
       }
       const data: ProviderInfo = await response.json();
       
@@ -204,13 +204,13 @@ function App() {
   const fetchServers = async () => {
     try {
       // Get the API URL from environment variables
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      const apiUrl = appConfig.apiPath;
       
       // Clear existing servers to show refreshing state
       setServers({});
       
       // Fetch servers from the dedicated endpoint
-      const serversResponse = await fetch(`${apiUrl}/api/servers`);
+      const serversResponse = await fetch(`${apiUrl}/servers`);
       if (serversResponse.ok) {
         const serversData: ServerResponse = await serversResponse.json();
         
@@ -243,7 +243,7 @@ function App() {
       });
       
       // Fallback method - fetch all tools
-      const response = await fetch(`${apiUrl}/api/tools`);
+      const response = await fetch(`${apiUrl}/tools`);
       if (!response.ok) {
         throw new Error('Failed to fetch tools');
       }
@@ -289,13 +289,20 @@ function App() {
   // Handle provider change
   const handleProviderChange = async (provider: string) => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
-      const response = await fetch(`${apiUrl}/api/provider`, {
+      setIsLoading(true);
+      setError(null);
+      
+      // Clear selected tool and server when switching providers
+      setSelectedTool(null);
+      setSelectedServer(null);
+      setUseAllServerTools(false);
+
+      const response = await fetch(`${appConfig.apiPath}/provider`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider })
       });
       
       if (!response.ok) {
@@ -316,6 +323,8 @@ function App() {
         title: "Provider Change Failed",
         description: "Failed to change the LLM provider. Please try again.",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -329,44 +338,37 @@ function App() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!message.trim()) return;
-
-    const newUserMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: message,
-    };
-
-    setChatHistory((prev) => [...prev, newUserMessage]);
-    setMessage("");
-    setIsLoading(true);
     
-    // Reset the chat response state when a new message is sent
-    setResponse(null);
-
+    setIsLoading(true);
+    setError(null);
+    
+    // Add user message to history immediately for better UX
+    const userMessage: ChatMessage = { role: 'user', content: message, id: `user-${Date.now()}` };
+    setChatHistory(prev => [...prev, userMessage]);
+    
+    // Store which model we're using
+    const providerUsed = currentProvider;
+    
+    // Prepare request payload
+    const requestData = {
+      history: [...chatHistory, userMessage],
+      provider: providerUsed,
+      selectedTool: selectedTool || undefined,
+      selectedServer: selectedServer || undefined,
+      useAllServerTools: useAllServerTools
+    };
+    
+    // Clear input
+    setMessage('');
+    
     try {
-      // Get the API URL from environment variables
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
-      
-      // Create a copy of the chat history that includes the new message
-      const fullHistory = [...chatHistory, newUserMessage];
-      
-      // Format the history for the API
-      const formattedHistory = fullHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-      
-      const response = await fetch(`${apiUrl}/api/chat`, {
-        method: "POST",
+      // Send to server
+      const response = await fetch(`${appConfig.apiPath}/chat`, {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          history: formattedHistory, // Send the complete chat history
-          selectedTool: selectedTool,
-          selectedServer: selectedServer,
-          useAllServerTools: useAllServerTools,
-        }),
+        body: JSON.stringify(requestData)
       });
 
       if (!response.ok) {

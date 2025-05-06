@@ -189,6 +189,8 @@ However, this doesn't provide process management or automatic restarts like PM2.
 
 ### Nginx Configuration
 
+#### Standalone Deployment
+
 1. Create an Nginx configuration file:
    ```bash
    sudo cp nginx.conf /etc/nginx/sites-available/mcp-host
@@ -206,6 +208,49 @@ However, this doesn't provide process management or automatic restarts like PM2.
    sudo nginx -t
    sudo systemctl restart nginx
    ```
+
+#### Shared Server Deployment with Path Prefix
+
+If you're deploying the application on a shared server with other applications, you can configure it to run under a specific path prefix (e.g., `/mcp-host`).
+
+1. Add the following location block to your existing Nginx configuration:
+
+   ```nginx
+   location /mcp-host {
+       proxy_pass http://127.0.0.1:7564;
+       proxy_redirect off;
+       proxy_read_timeout 3600s;
+       proxy_send_timeout 3600s;
+       proxy_http_version 1.1;
+       proxy_set_header Host $http_host;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection "upgrade";
+       client_max_body_size 0;
+   }
+   ```
+
+2. Make sure to set the following environment variables in your `.env` file:
+
+   ```bash
+   # Server ports
+   BACKEND_PORT=7564
+   FRONTEND_PORT=6754
+
+   # Base path when deployed behind proxy
+   BASE_PATH=/mcp-host
+
+   # Environment
+   NODE_ENV=production
+   ```
+
+3. Restart Nginx and your application:
+
+   ```bash
+   sudo systemctl restart nginx
+   pm2 restart mcp-host
+   ```
+
+The application has been modified to handle the base path prefix automatically in both the frontend and backend code.
 
 ### SSL Configuration
 
@@ -262,6 +307,10 @@ mcp-host-node-simple/
 ├── src/
 │   ├── backend/         # Express server
 │   ├── frontend/        # React frontend
+│   │   └── src/
+│   │       ├── components/  # UI components
+│   │       ├── lib/         # Frontend utilities
+│   │       └── appConfig.ts # Frontend configuration for base path
 │   ├── utils/           # Utility functions
 │   ├── config.ts        # Configuration settings
 │   ├── mcp-host.ts      # MCP host implementation
@@ -280,9 +329,10 @@ The application uses the following environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | NODE_ENV | Environment mode (development/production) | development |
-| PORT | Backend server port | 3001 |
-| BACKEND_PORT | Same as PORT | 3001 |
-| FRONTEND_PORT | Frontend server port | 3002 |
+| PORT | Backend server port | 3000 |
+| BACKEND_PORT | Backend server port | 7564 |
+| FRONTEND_PORT | Frontend server port | 6754 |
+| BASE_PATH | Base path prefix for the application | /mcp-host |
 | CORS_ORIGINS | Allowed origins for CORS | * |
 | ANTHROPIC_API_KEY | Anthropic API key | Required |
 | GOOGLE_API_KEY | Google API key | Required |
