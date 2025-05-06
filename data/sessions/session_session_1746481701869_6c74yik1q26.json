@@ -1,0 +1,16 @@
+{
+  "id": "session_1746481701869_6c74yik1q26",
+  "userId": "user456",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What was the calculation result from the previous session?"
+    }
+  ],
+  "createdAt": 1746481701869,
+  "updatedAt": 1746481701873,
+  "metadata": {
+    "name": "Second Session",
+    "description": "Testing multi-session support"
+  }
+}

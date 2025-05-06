@@ -451,12 +451,45 @@ Use this tool exclusively to answer the user's query.`;
     // Instead of adding another system message, add a user message asking for a summary
     llm.append('user', `I need a complete summary of all the information gathered from the ${allToolResults.length} tool${allToolResults.length !== 1 ? 's' : ''} above. Please synthesize all the data into a comprehensive answer to my original question.`);
 
-    // Generate the final response with parameters to encourage comprehensive answers
-    const finalGenerationResult = await llm.generate({
-      temperature: 0.7, // Slightly higher temperature for more comprehensive responses
-      maxTokens: 4000, // Allow longer responses for better synthesis
-      // No tools passed here so the model focuses on synthesis
+    // Extract tool names from the previous tool results to maintain toolConfig consistency
+    const toolNames = Array.from(new Set(allToolResults.map(tr => tr.toolName)));
+    logger.info({ reqId: (req as any).reqId, toolNames }, 'Tools used in this session');
+    
+    // Look up the tool definitions from mcpTools to ensure we use the correct format
+    const toolsToInclude: any[] = [];
+    toolNames.forEach(name => {
+      if (mcpTools[name]) {
+        toolsToInclude.push(mcpTools[name]);
+      }
     });
+    
+    logger.info({ 
+      reqId: (req as any).reqId, 
+      toolCount: toolsToInclude.length,
+      provider: currentProviderName 
+    }, 'Tools included in final generation');
+
+    // Generate the final response with parameters to encourage comprehensive answers
+    // IMPORTANT: For AWS Bedrock Claude, we must include the tools in the final step
+    const finalGenerationOptions: any = {
+      temperature: 0.7, // Slightly higher temperature for more comprehensive responses
+      maxTokens: 4000 // Allow longer responses for better synthesis
+    };
+    
+    // Only add tools for BedrockAnthropic provider to avoid breaking other providers
+    // IMPORTANT: The provider name from getCurrentProvider() is 'bedrock', but the actual
+    // provider name from provider.name() might be 'BedrockAnthropic::model'
+    if (currentProviderName === 'bedrock') {
+      logger.info({ reqId: (req as any).reqId }, 'Adding tools to final generation for AWS Bedrock provider');
+      
+      // Add all MCP tools to ensure compatibility - this is crucial for AWS Bedrock Claude
+      finalGenerationOptions.tools = Object.values(mcpTools);
+            
+      // Setting toolChoice to auto but not expecting tool usage in final step
+      finalGenerationOptions.toolChoice = 'auto';
+    }
+    
+    const finalGenerationResult = await llm.generate(finalGenerationOptions);
     const finalAssistantResponseText = finalGenerationResult.text;
     
     // For Azure provider, ensure we have proper responses even if empty

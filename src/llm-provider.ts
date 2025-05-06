@@ -88,22 +88,269 @@ export class OpenAIProvider implements LLMProvider {
  */
 export class BedrockAnthropicProvider implements LLMProvider {
   #providerName = 'BedrockAnthropic';
-  #modelName = 'anthropic.claude-3-sonnet-20240229-v1:0';
+  #modelName = 'anthropic.claude-3-5-sonnet-20240620-v1:0';
   #model: LanguageModel;
-
+  
   constructor() {
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      throw new Error('AWS credentials not found in environment variables');
+    try {
+      console.log('[BedrockAnthropicProvider] Initializing AWS Bedrock Claude 3.5');
+      
+      // Create a standard Bedrock provider using the AI SDK
+      const bedrockProvider = createAmazonBedrock({
+        region: process.env.AWS_REGION || 'us-east-1'
+      });
+
+      // Get the base Bedrock model
+      const baseModel = bedrockProvider(this.#modelName);
+      
+      // Create a wrapper that adds the required anthropicOptions
+      this.#model = {
+        ...baseModel,
+        doGenerate: async (options: any) => {
+          try {
+            console.log('[BedrockAnthropicProvider] Received generation request');
+            console.log('[BedrockAnthropicProvider] Tools provided in request:', 
+                options.mode?.tools ? options.mode.tools.length : 0);
+            
+            // Deep clone options to avoid modifying the original
+            const enhancedOptions = JSON.parse(JSON.stringify(options));
+            
+            // CRITICAL FIX: Always analyze the entire prompt for tool usage
+            // even when tools aren't explicitly provided in this call
+            if (!enhancedOptions.prompt) {
+              enhancedOptions.prompt = [];
+            }
+            
+            // Determine if the conversation has any tool usage
+            const hasToolUsageInConversation = this.#hasAnyToolUsageInConversation(enhancedOptions.prompt);
+            console.log('[BedrockAnthropicProvider] Tool usage in conversation history:', hasToolUsageInConversation);
+            
+            // ===== CRITICAL FIX: ALWAYS INCLUDE TOOL CONFIG IF TOOLS USED ANYWHERE =====
+            // AWS Bedrock Claude 3.5 requires toolConfig whenever the conversation has ANY tool usage
+            if (hasToolUsageInConversation || options.tools || options.mode?.tools) {
+              // Get tools from options or create defaults based on conversation
+              const tools = this.#prepareToolsForRequest(options);
+              
+              if (tools.length > 0) {
+                // Create proper tool config structure
+                enhancedOptions.anthropicOptions = {
+                  ...enhancedOptions.anthropicOptions,
+                  toolConfig: {
+                    tools: tools,
+                    toolChoice: options.toolChoice || options.mode?.toolChoice?.type || 'auto'
+                  }
+                };
+                
+                console.log('[BedrockAnthropicProvider] Added toolConfig with:', tools.length, 'tools');
+              }
+            }
+            
+            // Call the original model with enhanced options
+            console.log('[BedrockAnthropicProvider] Sending request to AWS Bedrock...');
+            const result = await baseModel.doGenerate(enhancedOptions);
+            console.log('[BedrockAnthropicProvider] Generation successful');
+            return result;
+          } catch (error) {
+            console.error('[BedrockAnthropicProvider] Generation error:', error);
+            throw error;
+          }
+        }
+      } as LanguageModel;
+      
+      console.log('[BedrockAnthropicProvider] Successfully initialized');
+    } catch (error) {
+      console.error('[BedrockAnthropicProvider] Initialization error:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if there is any tool usage in the entire conversation
+   * This is crucial for AWS Bedrock Claude 3.5 as it requires toolConfig
+   * for ALL requests in a conversation that has ANY tool usage
+   */
+  #hasAnyToolUsageInConversation(messages: any[]): boolean {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return false;
     }
     
-    const provider = createAmazonBedrock({
-      region: process.env.AWS_REGION || 'us-east-1',
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    for (const message of messages) {
+      // Check assistant messages for any kind of tool use
+      if (message.role === 'assistant' && Array.isArray(message.content)) {
+        for (const content of message.content) {
+          // Check all possible tool use formats
+          if (content.toolUse || 
+              content.type === 'tool-call' || 
+              content.type === 'tool_call' || 
+              content.type === 'toolUse' || 
+              content.type === 'tool_use' || 
+              content.type === 'tool-use') {
+            return true;
+          }
+        }
+      }
+      
+      // Check user or tool messages for tool results
+      if ((message.role === 'user' || message.role === 'tool') && Array.isArray(message.content)) {
+        for (const content of message.content) {
+          // Check all possible tool result formats
+          if (content.toolResult || 
+              content.tool_result || 
+              content.type === 'tool-result' || 
+              content.type === 'tool_result' || 
+              content.type === 'toolResult') {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Prepare tools for the AWS Bedrock Claude request format
+   * This handles both tools provided directly in options and
+   * extracting tool names from the conversation history
+   */
+  #prepareToolsForRequest(options: any): any[] {
+    const tools: any[] = [];
+    
+    // Case 1: Tools provided directly in options.tools (preferred)
+    if (options.tools && Array.isArray(options.tools) && options.tools.length > 0) {
+      for (const tool of options.tools) {
+        tools.push({
+          name: tool.name,
+          description: tool.description || `Tool: ${tool.name}`,
+          input_schema: tool.parameters || { type: 'object', properties: {} }
+        });
+      }
+    }
+    // Case 2: Tools provided in options.mode.tools (common format)
+    else if (options.mode?.tools && Array.isArray(options.mode.tools) && options.mode.tools.length > 0) {
+      for (const tool of options.mode.tools) {
+        tools.push({
+          name: tool.name,
+          description: tool.description || `Tool: ${tool.name}`,
+          input_schema: tool.parameters || { type: 'object', properties: {} }
+        });
+      }
+    }
+    // Case 3: Extract tools from conversation history
+    else if (options.prompt && Array.isArray(options.prompt)) {
+      const toolNamesUsed = new Set<string>();
+      
+      // Scan conversation for tool names
+      for (const message of options.prompt) {
+        if (message.role === 'assistant' && Array.isArray(message.content)) {
+          for (const content of message.content) {
+            // Get tool name from toolUse object
+            if (content.toolUse && content.toolUse.name) {
+              toolNamesUsed.add(content.toolUse.name);
+            }
+            // Get tool name from tool call object
+            else if ((content.type === 'tool-call' || content.type === 'tool_call') && content.toolName) {
+              toolNamesUsed.add(content.toolName);
+            }
+          }
+        }
+      }
+      
+      // Create tool definitions from the names
+      for (const name of toolNamesUsed) {
+        tools.push({
+          name,
+          description: `Tool: ${name}`,
+          input_schema: { type: 'object', properties: {} }
+        });
+      }
+    }
+    
+    return tools;
+  }
+
+  /**
+   * Detects if there is any tool usage in the conversation messages
+   */
+  #detectToolUsageInMessages(messages: any[]): boolean {
+    if (!messages || !Array.isArray(messages)) {
+      return false;
+    }
+    
+    // Look for toolUse in assistant messages
+    const hasToolUse = messages.some(msg => {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.content)) {
+        return false;
+      }
+      
+      return msg.content.some((content: any) => {
+        return content.type === 'tool_use' || 
+               content.type === 'toolUse' || 
+               content.type === 'tool-use' || 
+               content.type === 'tool_call' || 
+               content.type === 'tool-call';
+      });
     });
     
-    // Create the model with Bedrock
-    this.#model = provider(this.#modelName);
+    // Look for toolResult in user messages
+    const hasToolResult = messages.some(msg => {
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) {
+        return false;
+      }
+      
+      return msg.content.some((content: any) => {
+        return content.toolResult || content.tool_result;
+      });
+    });
+    
+    return hasToolUse || hasToolResult;
+  }
+  
+  /**
+   * Formats tools into the structure required by AWS Bedrock Claude
+   */
+  #formatToolsForBedrock(options: any): any[] {
+    const formattedTools: any[] = [];
+    
+    // Case 1: Tools provided via options.mode.tools
+    if (options.mode?.tools && Array.isArray(options.mode.tools)) {
+      return options.mode.tools.map((tool: any) => ({
+        name: tool.name,
+        description: tool.description || `Tool: ${tool.name}`,
+        input_schema: tool.parameters || { type: 'object', properties: {} }
+      }));
+    }
+    
+    // Case 2: Extract tools from conversation history
+    if (options.prompt && Array.isArray(options.prompt)) {
+      for (const message of options.prompt) {
+        if (message.role === 'assistant' && Array.isArray(message.content)) {
+          for (const content of message.content) {
+            // Various tool usage formats that might appear
+            if (content.type === 'tool_use' || 
+                content.type === 'toolUse' || 
+                content.type === 'tool-use' || 
+                content.type === 'tool_call' || 
+                content.type === 'tool-call') {
+              
+              // Get the tool name from whatever field it might be in
+              const toolName = content.toolName || content.name || content.tool || '';
+              
+              // Don't add duplicate tools
+              if (toolName && !formattedTools.some(t => t.name === toolName)) {
+                formattedTools.push({
+                  name: toolName,
+                  description: `Tool: ${toolName}`,
+                  input_schema: { type: 'object', properties: {} }
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    return formattedTools;
   }
 
   model(): LanguageModel {

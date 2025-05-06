@@ -1,6 +1,6 @@
 import './backend/server.js';
 import { LLMClient, LLMToolResults } from "./llm-client.js";
-import { AnthropicProvider, OpenAIProvider } from "./llm-provider.js";
+import { AnthropicProvider, OpenAIProvider, BedrockAnthropicProvider } from "./llm-provider.js";
 import { MCPHost } from "./mcp-host.js";
 import { SessionManager } from "./session-manager.js";
 import { SessionStorage } from "./session-storage.js";
@@ -33,7 +33,7 @@ async function main() {
 
   // Create the LLM client with session manager
   const llm = new LLMClient({ 
-    provider: new OpenAIProvider(),
+    provider: new BedrockAnthropicProvider(),
     sessionManager
   });
 

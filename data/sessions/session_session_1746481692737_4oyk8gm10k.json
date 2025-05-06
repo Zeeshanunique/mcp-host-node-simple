@@ -1,0 +1,36 @@
+{
+  "id": "session_1746481692737_4oyk8gm10k",
+  "userId": "user123",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful AI assistant that uses tools when needed."
+    },
+    {
+      "role": "user",
+      "content": "Use add tool to calculate numbers 100 + 1000?"
+    },
+    {
+      "role": "user",
+      "content": "100 + 1000 = 1100"
+    },
+    {
+      "role": "user",
+      "content": "What was the result of the calculation we just did?"
+    },
+    {
+      "role": "user",
+      "content": "Let's do another calculation: 200 * 5"
+    },
+    {
+      "role": "user",
+      "content": "100 + 1000 = 1100"
+    }
+  ],
+  "createdAt": 1746481692737,
+  "updatedAt": 1746481708148,
+  "metadata": {
+    "name": "Sample Session",
+    "description": "Testing session-based context"
+  }
+}

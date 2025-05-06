@@ -78,10 +78,18 @@ function App() {
   const chatEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
   
-  // Add provider state
+  // Add provider state with more detailed provider information
   const [currentProvider, setCurrentProvider] = useState<string>('anthropic');
-  const [availableProviders, setAvailableProviders] = useState<string[]>(['anthropic', 'google']);
+  const [availableProviders, setAvailableProviders] = useState<string[]>(['anthropic', 'openai', 'bedrock', 'azure']);
   
+  // Add provider display names for better UI presentation
+  const providerDisplayNames: Record<string, string> = {
+    'anthropic': 'Anthropic Claude',
+    'openai': 'OpenAI',
+    'bedrock': 'AWS Bedrock Claude 3.5',
+    'azure': 'Azure OpenAI'
+  };
+
   // Add servers state - maps server names to their tools
   const [servers, setServers] = useState<Record<string, string[]>>({});
 
@@ -456,8 +464,12 @@ function App() {
                 className="text-sm rounded-md border border-input bg-background px-3 py-1"
               >
                 {availableProviders.map(provider => (
-                  <option key={provider} value={provider}>
-                    {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                  <option 
+                    key={provider} 
+                    value={provider}
+                  >
+                    {providerDisplayNames[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)}
+                    {provider === 'bedrock' ? ' (MCP Ready)' : ''}
                   </option>
                 ))}
               </select>
