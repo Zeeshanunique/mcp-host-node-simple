@@ -2,53 +2,102 @@
   "mcpServers": {
     "websearch": {
       "command": "node",
-      "args": ["./fixtures/servers/websearch/index.js"]
+      "args": [
+        "./fixtures/servers/websearch/index.js"
+      ]
     },
     "research": {
       "command": "node",
-      "args": ["./fixtures/servers/research/index.js"]
+      "args": [
+        "./fixtures/servers/research/index.js"
+      ]
     },
     "weather": {
       "command": "node",
-      "args": ["./fixtures/servers/weather/index.js"]
+      "args": [
+        "./fixtures/servers/weather/index.js"
+      ]
     },
     "summarize": {
       "command": "node",
-      "args": ["./fixtures/servers/summarize/index.js"]
-    },
-    "travel_guide": {
-      "command": "node",
-      "args": ["./fixtures/servers/travel_guide/index.js"]
+      "args": [
+        "./fixtures/servers/summarize/index.js"
+      ]
     },
     "webscrap": {
       "command": "node",
-      "args": ["./fixtures/servers/webscrap/index.js"]
+      "args": [
+        "./fixtures/servers/webscrap/index.js"
+      ]
     },
     "aws_docs": {
       "command": "node",
-      "args": ["./fixtures/servers/aws_documentation/index.js"]
+      "args": [
+        "./fixtures/servers/aws_documentation/index.js"
+      ]
     },
     "fastmcp_test": {
       "command": "python",
-      "args": ["./fixtures/servers/fastmcp_test/main.py"],
+      "args": [
+        "./fixtures/servers/fastmcp_test/main.py"
+      ],
       "env": {
         "PYTHONPATH": "./fixtures/servers/fastmcp_test"
       }
     },
     "age_calculator": {
       "command": "python",
-      "args": ["./fixtures/servers/age_calculator/main.py"],
+      "args": [
+        "./fixtures/servers/age_calculator/main.py"
+      ],
       "env": {
         "PYTHONPATH": "./fixtures/servers/age_calculator"
       }
     },
     "calculator": {
       "command": "node",
-      "args": ["./fixtures/servers/calculator/index.js"]
+      "args": [
+        "./fixtures/servers/calculator/index.js"
+      ]
     },
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@0.0.13"]
+      "args": [
+        "@playwright/mcp@0.0.13"
+      ]
+    },
+    "trave_guide": {
+      "command": "node",
+      "args": [
+        "./fixtures/servers/travel_guide/index.js"
+      ]
+    },
+    "delivery": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "http://52.186.15.190:5678/mcp/delivery/sse"
+      ]
+    },
+    "GTM": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "http://52.186.15.190:5678/mcp/gtm/sse"
+      ]
+    },
+    "n8n": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "http://52.186.15.190:5678/mcp/f84e5d90-9bb0-495e-9bb9-b01a6ea54337/sse"
+      ]
     }
   }
 }
