@@ -13,8 +13,10 @@ import { ShortcutsHelpDialog } from './components/shortcuts-help-dialog';
 import { useToast } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown, X, ServerIcon as Server, Wrench } from 'lucide-react';
+import { MessageSquare, Lightbulb, Send, Loader2, Bot, Code, ChevronsDown, Info, Cpu, AlertTriangle, Trash2, CheckCircle, RefreshCw, ChevronDown, X, ServerIcon as Server, Wrench, PlusCircle } from 'lucide-react';
 import { MarkdownRenderer } from './components/markdown-renderer';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './components/ui/dialog';
+import { Input } from './components/ui/input';
 
 interface ToolResult {
   name: string;
@@ -78,6 +80,12 @@ function App() {
   const [useAllServerTools, setUseAllServerTools] = useState<boolean>(false);
   const chatEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  // Add state for server upload dialog
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [serverConfigText, setServerConfigText] = useState('');
+  const [serverConfigName, setServerConfigName] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   
   // Add provider state with more detailed provider information
   const [currentProvider, setCurrentProvider] = useState<string>('anthropic');
@@ -446,6 +454,93 @@ function App() {
   const handleKeySend = () => {
     if (message.trim() && !isLoading) {
       handleSubmit(new Event('submit') as any);
+    }
+  };
+  
+  // Handle server configuration upload
+  const handleServerUpload = async () => {
+    // Validate inputs
+    if (!serverConfigName.trim()) {
+      toast({
+        title: "Server name required",
+        description: "Please enter a name for the server configuration.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!serverConfigText.trim()) {
+      toast({
+        title: "Configuration required",
+        description: "Please enter the server configuration JSON.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Validate JSON format
+    try {
+      // Make sure it's a valid JSON object with required structure
+      const configObj = JSON.parse(serverConfigText);
+      
+      if (!configObj.command || !Array.isArray(configObj.args)) {
+        toast({
+          title: "Invalid configuration format",
+          description: "Server config must include 'command' and 'args' properties.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      toast({
+        title: "Invalid JSON format",
+        description: "The server configuration must be valid JSON.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsUploading(true);
+    
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:6754';
+      const response = await fetch(`${apiUrl}/api/servers/upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          serverName: serverConfigName,
+          serverConfig: serverConfigText
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to upload server configuration');
+      }
+      
+      toast({
+        title: "Server configuration added",
+        description: `${serverConfigName} has been added successfully.`,
+      });
+      
+      // Close dialog and reset form
+      setIsUploadDialogOpen(false);
+      setServerConfigName('');
+      setServerConfigText('');
+      
+      // Refresh the servers list
+      fetchServers();
+    } catch (error) {
+      console.error('Error uploading server configuration:', error);
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -861,11 +956,24 @@ function App() {
           <TabsContent value="servers" className="flex-1">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cpu className="h-5 w-5 text-primary" />
-                  Available Servers
-                </CardTitle>
-                <CardDescription>Tools grouped by their server origins</CardDescription>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Cpu className="h-5 w-5 text-primary" />
+                      Available Servers
+                    </CardTitle>
+                    <CardDescription>Tools grouped by their server origins</CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setIsUploadDialogOpen(true)}
+                    className="flex items-center gap-1"
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                    Add Server
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {Object.keys(servers).length === 0 ? (
@@ -1042,6 +1150,62 @@ function App() {
       </footer>
       
       <Toaster />
+
+      {/* Server Configuration Upload Dialog */}
+      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Add MCP Server Configuration</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-2">
+              <label htmlFor="serverName" className="text-right text-sm font-medium col-span-1">
+                Server Name
+              </label>
+              <Input
+                id="serverName"
+                placeholder="playwright"
+                className="col-span-3"
+                value={serverConfigName}
+                onChange={(e) => setServerConfigName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-4 items-start gap-2">
+              <label htmlFor="config" className="text-right text-sm font-medium col-span-1 mt-2">
+                Configuration
+              </label>
+              <div className="col-span-3 space-y-2">
+                <Textarea
+                  id="config"
+                  placeholder={`{\n  "command": "npx",\n  "args": ["@playwright/mcp@0.0.13"]\n}`}
+                  className="min-h-[150px] font-mono text-sm"
+                  value={serverConfigText}
+                  onChange={(e) => setServerConfigText(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Provide the configuration for your MCP server in JSON format.
+                  Must include "command" and "args" properties.
+                </p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleServerUpload} disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Server'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -701,6 +701,137 @@ app.get(`${config.FULL_API_PATH}/servers`, (req: Request, res: Response) => {
   })();
 });
 
+// API endpoint for uploading server configurations
+app.post('/api/servers/upload', (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const { serverName, serverConfig } = req.body;
+      
+      if (!serverName) {
+        return res.status(400).json({ error: 'Server name is required' });
+      }
+      
+      if (!serverConfig) {
+        return res.status(400).json({ error: 'Server configuration is required' });
+      }
+      
+      // Parse and validate the server configuration
+      let configObject: any;
+      try {
+        configObject = typeof serverConfig === 'string' ? JSON.parse(serverConfig) : serverConfig;
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid JSON format for server configuration' });
+      }
+      
+      // Validate required fields
+      if (!configObject.command || !Array.isArray(configObject.args)) {
+        return res.status(400).json({ 
+          error: 'Invalid server configuration', 
+          message: "Configuration must include 'command' and 'args' properties"
+        });
+      }
+
+      logger.info({ 
+        serverName, 
+        configObject, 
+        reqId: (req as any).reqId 
+      }, 'Adding new MCP server configuration');
+      
+      // Read the existing MCP server configuration
+      const mcpConfigPath = path.resolve(process.cwd(), config.MCP_CONFIG_PATH);
+      const configContent = await fs.promises.readFile(mcpConfigPath, 'utf-8');
+      let mcpConfig: any;
+      
+      try {
+        mcpConfig = JSON.parse(configContent);
+      } catch (err) {
+        logger.error({ 
+          error: err,
+          reqId: (req as any).reqId 
+        }, 'Failed to parse MCP config file');
+        return res.status(500).json({ 
+          error: 'Failed to read MCP configuration file',
+          message: 'The server configuration file could not be parsed'
+        });
+      }
+      
+      // Check if server name already exists
+      if (mcpConfig.mcpServers && mcpConfig.mcpServers[serverName]) {
+        return res.status(409).json({ 
+          error: 'Server already exists', 
+          message: `A server named "${serverName}" already exists` 
+        });
+      }
+      
+      // Add the new server configuration
+      if (!mcpConfig.mcpServers) {
+        mcpConfig.mcpServers = {};
+      }
+      
+      mcpConfig.mcpServers[serverName] = configObject;
+      
+      // Write the updated configuration back to the file with proper formatting
+      await fs.promises.writeFile(
+        mcpConfigPath, 
+        JSON.stringify(mcpConfig, null, 2),
+        'utf-8'
+      );
+      
+      logger.info({ 
+        serverName, 
+        reqId: (req as any).reqId 
+      }, 'MCP server configuration added successfully');
+      
+      // Restart the MCP host to apply changes
+      try {
+        // Stop the host
+        await host.shutdown();
+        
+        // Restart the host with the updated configuration
+        await host.start({
+          mcpServerConfig: mcpConfigPath,
+        });
+        
+        // Refresh the tools
+        tools = await host.tools();
+        
+        logger.info({ 
+          reqId: (req as any).reqId 
+        }, 'MCP host restarted with new configuration');
+        
+        // Return success response
+        return res.status(200).json({ 
+          success: true, 
+          message: `Server "${serverName}" added successfully`
+        });
+      } catch (error) {
+        logger.error({ 
+          error,
+          serverName,
+          reqId: (req as any).reqId 
+        }, 'Error restarting MCP host with new configuration');
+        
+        // Still return success since the config was saved even if restart failed
+        return res.status(200).json({ 
+          success: true, 
+          warning: 'Server configuration saved but host restart failed. You may need to restart the application.',
+          message: `Server "${serverName}" added to configuration`
+        });
+      }
+    } catch (error) {
+      logger.error({ 
+        error, 
+        reqId: (req as any).reqId 
+      }, 'Error uploading server configuration');
+      
+      return res.status(500).json({ 
+        error: 'Failed to upload server configuration',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  })();
+});
+
 // Graceful shutdown function
 const gracefulShutdown = async (signal: string) => {
   logger.info({ signal }, '[Server] Received shutdown signal');
